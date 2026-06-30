@@ -485,8 +485,6 @@ function WsBar({ onSearch, onOpenTable }) {
           onKeyDown={(e) => { if (e.key === "Enter") { onSearch(q); } }} />
       </div>
       <div className="wsbar-right">
-        <button className="btn-primary" onClick={onOpenTable} style={{ borderRadius: 999 }}>Open portfolio &rarr;</button>
-        <button className="ws-icon" title="Alerts">{ICON.bell}<span className="dot"></span></button>
       </div>
     </div>
   );
