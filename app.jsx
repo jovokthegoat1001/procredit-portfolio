@@ -487,10 +487,6 @@ function WsBar({ onSearch, onOpenTable }) {
       <div className="wsbar-right">
         <button className="btn-primary" onClick={onOpenTable} style={{ borderRadius: 999 }}>Open portfolio &rarr;</button>
         <button className="ws-icon" title="Alerts">{ICON.bell}<span className="dot"></span></button>
-        <div className="ws-avatar">
-          <div className="av">CR</div>
-          <div><div className="nm">Credit Risk</div><div className="rl">Risk Officer</div></div>
-        </div>
       </div>
     </div>
   );
