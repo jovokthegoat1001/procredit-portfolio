@@ -69,9 +69,18 @@ const COLUMNS = [
   { key: "dpdBucket", label: "DPD Bucket", type: "dpd", w: 110 },
 ];
 
-function Filters({ filters, setFilters, meta, count, total, onReset, onExport, query, setQuery }) {
+function Filters({ filters, setFilters, meta, count, total, onReset, onExport, query, setQuery, hiddenCols, onToggleCol }) {
   const [open, setOpen] = useState(() => Object.values(filters).filter(Boolean).length > 0);
+  const [colPickerOpen, setColPickerOpen] = useState(false);
+  const colPickerRef = useRef(null);
   const activeCount = Object.values(filters).filter(Boolean).length;
+
+  useEffect(() => {
+    if (!colPickerOpen) return;
+    const h = (e) => { if (colPickerRef.current && !colPickerRef.current.contains(e.target)) setColPickerOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [colPickerOpen]);
 
   const chip = (label, group, value) => {
     const active = filters[group] === value;
@@ -101,6 +110,23 @@ function Filters({ filters, setFilters, meta, count, total, onReset, onExport, q
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0L5 7m3 3l3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             Export CSV
           </button>
+          <div style={{ position: "relative" }} ref={colPickerRef}>
+            <button className="btn-ghost" onClick={() => setColPickerOpen((o) => !o)}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 4h14M1 8h14M1 12h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><rect x="9.5" y="2.5" width="4" height="3" rx="0.75" fill="var(--surface)" stroke="currentColor" strokeWidth="1.2"/></svg>
+              Columns
+              {hiddenCols.size > 0 && <span style={{ display: "inline-grid", placeItems: "center", minWidth: 18, height: 18, borderRadius: 999, background: "var(--brand)", color: "#fff", fontSize: 10, fontFamily: "var(--mono)", fontWeight: 600, padding: "0 4px" }}>{hiddenCols.size}</span>}
+            </button>
+            {colPickerOpen && (
+              <div className="col-picker">
+                {COLUMNS.filter((c) => !c.sticky).map((c) => (
+                  <label key={c.key} className="col-picker-row">
+                    <input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => onToggleCol(c.key)} />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {open && (
@@ -149,6 +175,19 @@ function Cell({ col, row }) {
 
 function Table({ onRowClick, filters, setFilters, query, setQuery, sort, setSort }) {
   const { rows, meta } = DATA;
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("pc_hiddenCols") || "[]")); }
+    catch { return new Set(); }
+  });
+  const toggleCol = (key) => {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem("pc_hiddenCols", JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const visibleCols = COLUMNS.filter((c) => !hiddenCols.has(c.key));
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -200,13 +239,14 @@ function Table({ onRowClick, filters, setFilters, query, setQuery, sort, setSort
   return (
     <div className="page table-page">
       <Filters filters={filters} setFilters={setFilters} meta={meta} count={sorted.length} total={rows.length}
-        onReset={() => { setFilters({}); setQuery(""); }} onExport={exportCSV} query={query} setQuery={setQuery} />
+        onReset={() => { setFilters({}); setQuery(""); }} onExport={exportCSV} query={query} setQuery={setQuery}
+        hiddenCols={hiddenCols} onToggleCol={toggleCol} />
 
       <div className="table-wrap">
         <table className="ptable">
           <thead>
             <tr>
-              {COLUMNS.map((c) => (
+              {visibleCols.map((c) => (
                 <th key={c.key} className={(c.sticky ? "sticky-col " : "") + (c.align === "right" ? "ralign" : "")}
                   style={{ minWidth: c.w, width: c.w }} onClick={() => toggleSort(c.key)}>
                   <span className="th-inner">
@@ -222,7 +262,7 @@ function Table({ onRowClick, filters, setFilters, query, setQuery, sort, setSort
           <tbody>
             {sorted.map((r) => (
               <tr key={r.id} onClick={() => onRowClick(r)} className={r.action === "EXIT" ? "row-exit" : ""}>
-                {COLUMNS.map((c) => (
+                {visibleCols.map((c) => (
                   <td key={c.key} className={(c.sticky ? "sticky-col " : "") + (c.align === "right" ? "ralign" : "")}>
                     <Cell col={c} row={r} />
                   </td>
@@ -230,7 +270,7 @@ function Table({ onRowClick, filters, setFilters, query, setQuery, sort, setSort
               </tr>
             ))}
             {sorted.length === 0 && (
-              <tr><td colSpan={COLUMNS.length} className="empty">No economic groups match these filters.</td></tr>
+              <tr><td colSpan={visibleCols.length} className="empty">No economic groups match these filters.</td></tr>
             )}
           </tbody>
         </table>
