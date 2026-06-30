@@ -314,7 +314,8 @@
   .ptable tbody tr.row-exit td { background: oklch(0.975 0.02 25); }
   .ptable tbody tr.row-exit:hover td { background: oklch(0.96 0.03 25); }
 
-  .sticky-col { position: sticky; left: 0; z-index: 3; background: var(--surface); box-shadow: 1px 0 0 var(--line-soft); }
+  .sticky-col { position: sticky; left: 0; z-index: 3; background: var(--surface); box-shadow: 1px 0 0 var(--line-soft); overflow: hidden; max-width: 168px; }
+  td.sticky-col span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ptable thead th.sticky-col { z-index: 6; background: rgba(248,250,252,.97); }
   .ptable tbody tr:hover td.sticky-col { background: oklch(0.975 0.006 250); }
   .ptable tbody tr.row-exit td.sticky-col { background: oklch(0.975 0.02 25); }
@@ -502,8 +503,9 @@
   .shell:not(.light) .ptable tbody tr:hover td { background: rgba(255,255,255,.035); }
   .shell:not(.light) .ptable tbody tr:hover td.sticky-col { background: rgba(255,255,255,.04); }
   .shell:not(.light) .ptable tbody tr.row-exit td { background: rgba(255,107,107,.10); }
-  .shell:not(.light) .ptable tbody tr.row-exit td.sticky-col { background: rgba(255,107,107,.12); }
+  .shell:not(.light) .ptable tbody tr.row-exit td.sticky-col { background: color-mix(in srgb, rgb(255,107,107) 12%, #1a1a20); }
   .shell:not(.light) .ptable tbody tr.row-exit:hover td { background: rgba(255,107,107,.16); }
+  .shell:not(.light) .ptable tbody tr.row-exit:hover td.sticky-col { background: color-mix(in srgb, rgb(255,107,107) 16%, #1a1a20); }
 
   /* page / table adjustments inside shell */
   .shell .page { max-width: none; margin: 0; padding: 0; }
