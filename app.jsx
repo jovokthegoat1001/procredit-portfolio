@@ -176,8 +176,8 @@ function Cell({ col, row }) {
 function Table({ onRowClick, filters, setFilters, query, setQuery, sort, setSort }) {
   const { rows, meta } = DATA;
   const [hiddenCols, setHiddenCols] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("pc_hiddenCols") || "[]")); }
-    catch { return new Set(); }
+    try { return new Set(JSON.parse(localStorage.getItem("pc_hiddenCols") || '["industry"]')); }
+    catch { return new Set(["industry"]); }
   });
   const toggleCol = (key) => {
     setHiddenCols((prev) => {
