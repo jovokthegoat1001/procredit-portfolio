@@ -94,13 +94,13 @@ function Analytics({ onDrillTo }) {
           <GroupedStackBars groups={cntByTier} onSegmentClick={tierSegClick} onGroupClick={tierGroupClick} onSeriesClick={(s) => drill({ classification: s })} />
         </div>
 
-        <div className="card" style={{ gridColumn: "1 / -1" }}>
+        <div className="card">
           <div className="card-head"><h3>Principal Balance by Revenue Bracket and Classification</h3></div>
-          <GroupedStackBars groups={pbByBracket} fmt={U.abbrevPHP} height={230} onSegmentClick={bracketSegClick} onGroupClick={bracketGroupClick} onSeriesClick={(s) => drill({ classification: s })} />
+          <GroupedStackBars groups={pbByBracket} fmt={U.abbrevPHP} onSegmentClick={bracketSegClick} onGroupClick={bracketGroupClick} onSeriesClick={(s) => drill({ classification: s })} />
         </div>
-        <div className="card" style={{ gridColumn: "1 / -1" }}>
+        <div className="card">
           <div className="card-head"><h3>Borrower by Revenue Bracket and Classification</h3></div>
-          <GroupedStackBars groups={cntByBracket} height={230} onSegmentClick={bracketSegClick} onGroupClick={bracketGroupClick} onSeriesClick={(s) => drill({ classification: s })} />
+          <GroupedStackBars groups={cntByBracket} onSegmentClick={bracketSegClick} onGroupClick={bracketGroupClick} onSeriesClick={(s) => drill({ classification: s })} />
         </div>
 
         <div className="card">
