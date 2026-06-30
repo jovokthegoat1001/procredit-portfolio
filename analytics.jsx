@@ -105,11 +105,11 @@ function Analytics({ onDrillTo }) {
 
         <div className="card">
           <div className="card-head"><h3>Classification Breakdown</h3></div>
-          <Donut segments={classBreakdown} size={150} thickness={22} onSegmentClick={classClick} />
+          <Donut segments={classBreakdown} size={190} thickness={28} onSegmentClick={classClick} />
         </div>
         <div className="card">
           <div className="card-head"><h3>DPD Breakdown</h3></div>
-          <Donut segments={dpdBreakdown} size={150} thickness={22} onSegmentClick={dpdClick} />
+          <Donut segments={dpdBreakdown} size={190} thickness={28} onSegmentClick={dpdClick} />
         </div>
       </div>
       <div className="page-foot">Live from Supabase &middot; Pro Credit Portfolio Risk &middot; figures in PHP</div>
