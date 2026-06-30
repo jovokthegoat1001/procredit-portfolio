@@ -394,6 +394,10 @@
 
   /* sidebar */
   .side { width: 232px; flex-shrink: 0; display: flex; flex-direction: column; padding: 20px 16px; border-right: 1px solid var(--line); gap: 6px; overflow-y: auto; }
+  .side-logo-row { display: flex; align-items: flex-start; gap: 2px; }
+  .side-back { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; margin-top: 4px; border-radius: 8px; background: none; border: none; color: var(--ink-400); cursor: pointer; transition: background .12s, color .12s; flex-shrink: 0; }
+  .side-back:hover { background: var(--track); color: var(--ink-800); }
+  .side-back svg { width: 16px; height: 16px; }
   .side-logo { display: flex; align-items: center; padding: 4px 8px 18px; border: none; background: none; cursor: pointer; }
   .side-logo img { height: 30px; width: auto; filter: brightness(0) invert(1); }
   .shell.light .side-logo img { filter: none; }

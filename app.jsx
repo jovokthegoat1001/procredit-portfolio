@@ -470,6 +470,7 @@ function Landing({ onEnter, onTable, onExit }) {
 /*  DASHBOARD SHELL — new dark UI                                        */
 /* ===================================================================== */
 const ICON = {
+  back: <svg viewBox="0 0 20 20" fill="none"><path d="M12.5 4l-7 6 7 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   grid: <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="11" y="3" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="11" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="11" y="11" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6"/></svg>,
   table: <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M3 8h14M8 8v8" stroke="currentColor" strokeWidth="1.6"/></svg>,
   eye: <svg viewBox="0 0 20 20" fill="none"><path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5z" stroke="currentColor" strokeWidth="1.6"/><circle cx="10" cy="10" r="2.2" stroke="currentColor" strokeWidth="1.6"/></svg>,
@@ -482,7 +483,7 @@ const ICON = {
   bell: <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 8a4 4 0 018 0c0 4 1.5 5 1.5 5h-11S6 12 6 8z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M8.5 16a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.5"/></svg>,
 };
 
-function Sidebar({ section, onNav, dark, setDark, onLogo }) {
+function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack }) {
   const exitCount = DATA.rows.filter((r) => r.action === "EXIT").length;
   const item = (key, label, icon, extra) => (
     <button className={"side-link" + (section === key ? " on" : "")} onClick={() => onNav(key)}>
@@ -491,9 +492,16 @@ function Sidebar({ section, onNav, dark, setDark, onLogo }) {
   );
   return (
     <aside className="side">
-      <button className="side-logo" onClick={onLogo} title="Back to landing">
-        <img src="procredit-logo.png" alt="ProCredit" />
-      </button>
+      <div className="side-logo-row">
+        {canBack && (
+          <button className="side-back" onClick={onBack} title="Go back">
+            {ICON.back}
+          </button>
+        )}
+        <button className="side-logo" onClick={onLogo} title="Back to landing">
+          <img src="procredit-logo.png" alt="ProCredit" />
+        </button>
+      </div>
       <div className="side-sect">Portfolio</div>
       {item("overview", "Overview", ICON.grid)}
       {item("portfolio", "Portfolio", ICON.table)}
@@ -719,6 +727,7 @@ function App() {
   const [filters, setFilters] = useState({});
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState({ key: "principalBalance", dir: -1 });
+  const [navHistory, setNavHistory] = useState([]);
 
   useEffect(() => {
     window.loadPortfolio()
@@ -752,7 +761,24 @@ function App() {
     </div>
   );
 
+  const pushHistory = (curView, curSection, curFilters, curQuery) => {
+    setNavHistory((h) => [...h, { view: curView, section: curSection, filters: curFilters, query: curQuery }]);
+  };
+
+  const goBack = () => {
+    setNavHistory((h) => {
+      if (!h.length) return h;
+      const prev = h[h.length - 1];
+      setView(prev.view);
+      setSection(prev.section);
+      setFilters(prev.filters);
+      setQuery(prev.query);
+      return h.slice(0, -1);
+    });
+  };
+
   const goTable = (preset, opts) => {
+    pushHistory(view, section, filters, query);
     if (preset && preset.focus) { setSection("portfolio"); setView("table"); setDetail(preset.focus); return; }
     if (preset) setFilters(opts && opts.replace ? preset : (f) => ({ ...f, ...preset }));
     setQuery("");
@@ -761,6 +787,7 @@ function App() {
   };
 
   const onNav = (key) => {
+    pushHistory(view, section, filters, query);
     setSection(key);
     if (key === "overview") { setView("overview"); }
     else if (key === "portfolio") { setFilters({}); setView("table"); }
@@ -769,7 +796,7 @@ function App() {
     else if (key === "analytics") { setView("analytics"); }
   };
 
-  const enterSearch = (q) => { setQuery(q); setFilters({}); setSection("portfolio"); setView("table"); };
+  const enterSearch = (q) => { pushHistory(view, section, filters, query); setQuery(q); setFilters({}); setSection("portfolio"); setView("table"); };
 
   const toggleDark = () => {
     setNoAnim(true);
@@ -788,7 +815,7 @@ function App() {
       )}
       {view !== "landing" && (
         <div className={"shell" + (dark ? "" : " light") + (noAnim ? " no-anim" : "")}>
-          <Sidebar section={section} onNav={onNav} dark={dark} setDark={toggleDark} onLogo={() => setView("landing")} />
+          <Sidebar section={section} onNav={onNav} dark={dark} setDark={toggleDark} onLogo={() => { setNavHistory([]); setView("landing"); }} onBack={goBack} canBack={navHistory.length > 0} />
           <div className="ws">
             <WsBar onSearch={enterSearch} onOpenTable={() => onNav("portfolio")} />
             <div className="ws-scroll">
