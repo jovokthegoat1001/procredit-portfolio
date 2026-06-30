@@ -563,10 +563,6 @@ function DashHome({ onRowClick, onDrill }) {
   return (
     <div>
       <div className="greet">
-        <div>
-          <div className="greet-hi">Welcome back</div>
-          <div className="greet-h1">Portfolio at a glance</div>
-        </div>
         <div className="seg">
           {["Today", "Week", "Month"].map((p) => (
             <button key={p} className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>{p}</button>
