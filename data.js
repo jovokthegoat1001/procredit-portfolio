@@ -102,7 +102,7 @@
   var ECONOMIC_GROUP_ALIASES = {
     "antech": "Antech",
     "belrose": "Antech",
-    "adp pharma": "Ondarea Group",
+    "adp pharma": "ADP Pharma",
     "seville": "ADP Pharma",
     "sv supreme": "SV Supreme",
     "gadget spot": "SV Supreme",
@@ -110,7 +110,7 @@
     "psi tech": "Powerserve",
     "mohs": "Waterside Holdings",
     "zenfro": "Waterside Holdings",
-    "manila hemp": "Manila Hemp ",
+    "manila hemp": "Manila Hemp",
     "acc hypermart": "Manila Hemp",
   };
   // Loans with no borrower_business_name (personal-name borrowers) that still
