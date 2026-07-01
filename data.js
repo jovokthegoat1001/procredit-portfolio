@@ -100,18 +100,18 @@
      exposure limit). Sourced from the Sheet's "Economic Group" column — everything
      not listed here is already its own group (business name === economic group). */
   var ECONOMIC_GROUP_ALIASES = {
-    "antech": "Antech Group",
-    "belrose": "Antech Group",
+    "antech": "Antech",
+    "belrose": "Antech",
     "adp pharma": "Ondarea Group",
-    "seville": "Ondarea Group",
-    "sv supreme": "SV Group",
-    "gadget spot": "SV Group",
-    "power serve": "PSI Group",
-    "psi tech": "PSI Group",
+    "seville": "ADP Pharma",
+    "sv supreme": "SV Supreme",
+    "gadget spot": "SV Supreme",
+    "power serve": "Powerserve",
+    "psi tech": "Powerserve",
     "mohs": "Waterside Holdings",
     "zenfro": "Waterside Holdings",
-    "manila hemp": "Manila Hemp Group",
-    "acc hypermart": "Manila Hemp Group",
+    "manila hemp": "Manila Hemp ",
+    "acc hypermart": "Manila Hemp",
   };
   // Loans with no borrower_business_name (personal-name borrowers) that still
   // roll up into a named Economic Group, keyed by borrower_id.
