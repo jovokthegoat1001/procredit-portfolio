@@ -306,7 +306,7 @@
   window.loadPortfolio = function () {
     return Promise.all([
       fetchAll(LOAN_TABLE, "*"),
-      fetchAll(REPAYMENT_TABLE, "loan_id,interest_repayment_amount"),
+      fetchAll(REPAYMENT_TABLE, "*"),
       fetchAll(CLASSIFICATION_TABLE, "*"),
     ]).then(function (results) {
       var classOverrides = {};
@@ -314,6 +314,8 @@
         if (r["Current Class."]) classOverrides[r["GROUP NAME"]] = r["Current Class."];
       });
       var portfolio = buildPortfolio(results[0], results[1], classOverrides);
+      portfolio.rawLoans = results[0]; // unedited rows straight from "ProCredit Loan Database", every status/column
+      portfolio.rawRepayments = results[1]; // unedited rows straight from "ProCredit Repayment Database"
       window.PORTFOLIO = portfolio;
       return portfolio;
     });

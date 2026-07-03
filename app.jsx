@@ -69,7 +69,7 @@ const COLUMNS = [
   { key: "dpdBucket", label: "DPD Bucket", type: "dpd", w: 110 },
 ];
 
-function Filters({ filters, setFilters, meta, count, total, onReset, onExport, query, setQuery, hiddenCols, onToggleCol }) {
+function Filters({ filters, setFilters, meta, count, total, onReset, onExport, query, setQuery, hiddenCols, onToggleCol, onSetAllCols }) {
   const [open, setOpen] = useState(() => Object.values(filters).filter(Boolean).length > 0);
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const colPickerRef = useRef(null);
@@ -118,6 +118,10 @@ function Filters({ filters, setFilters, meta, count, total, onReset, onExport, q
             </button>
             {colPickerOpen && (
               <div className="col-picker">
+                <div className="col-picker-actions">
+                  <button className="link" onClick={() => onSetAllCols(false)}>Select all</button>
+                  <button className="link" onClick={() => onSetAllCols(true)}>Unselect all</button>
+                </div>
                 {COLUMNS.filter((c) => !c.sticky).map((c) => (
                   <label key={c.key} className="col-picker-row">
                     <input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => onToggleCol(c.key)} />
@@ -187,6 +191,11 @@ function Table({ onRowClick, filters, setFilters, query, setQuery, sort, setSort
       return next;
     });
   };
+  const setAllCols = (hide) => {
+    const next = hide ? new Set(COLUMNS.filter((c) => !c.sticky).map((c) => c.key)) : new Set();
+    localStorage.setItem("pc_hiddenCols", JSON.stringify([...next]));
+    setHiddenCols(next);
+  };
   const visibleCols = COLUMNS.filter((c) => !hiddenCols.has(c.key));
 
   const filtered = useMemo(() => {
@@ -240,7 +249,7 @@ function Table({ onRowClick, filters, setFilters, query, setQuery, sort, setSort
     <div className="page table-page">
       <Filters filters={filters} setFilters={setFilters} meta={meta} count={sorted.length} total={rows.length}
         onReset={() => { setFilters({}); setQuery(""); }} onExport={exportCSV} query={query} setQuery={setQuery}
-        hiddenCols={hiddenCols} onToggleCol={toggleCol} />
+        hiddenCols={hiddenCols} onToggleCol={toggleCol} onSetAllCols={setAllCols} />
 
       <div className="table-wrap">
         <table className="ptable">
@@ -276,6 +285,289 @@ function Table({ onRowClick, filters, setFilters, query, setQuery, sort, setSort
         </table>
       </div>
     </div>
+  );
+}
+
+/* ===================================================================== */
+/*  RAW TABLE — unedited rows straight from a Supabase table             */
+/* ===================================================================== */
+// Friendly labels for known columns (loan + repayment tables share loan_id/synced_at).
+// custom_field_* keys are Loandisk's internal field IDs — meaning confirmed against data.js.
+const COLUMN_LABELS = {
+  loan_id: "Loan ID",
+  loan_application_id: "Loan Application ID",
+  borrower_business_name: "Borrower Business Name",
+  borrower_id: "Borrower ID",
+  custom_field_19606: "Legal Name",
+  custom_field_19601: "Industry",
+  custom_field_20418: "Risk Tier",
+  custom_field_19600: "Revenue Bracket",
+  custom_field_20379: "Exposure to Revenue (%)",
+  custom_field_20375: "Classification",
+  // Unconfirmed meaning — left as the raw db column name rather than guessing.
+  custom_field_26248: "custom_field_26248",
+  loan_interest_amount: "loan_interest_amount",
+  loan_interest: "loan_interest",
+  loan_duration: "loan_duration",
+  principal_balance_amount: "Principal Balance",
+  pending_due_principal: "Pending Due Principal",
+  loan_principal_amount: "Original Principal",
+  loan_released_date: "Released Date",
+  loan_status_id: "Loan Status ID",
+  loan_product_id: "Loan Product ID",
+  restructured_loan_history: "Restructured Loan History",
+  days_past_due: "Days Past Due",
+  due_date: "Due Date",
+  amortization: "Amortization",
+  total_amount_due: "Total Amount Due",
+  synced_at: "Last Synced",
+  repayment_id: "Repayment ID",
+  loan_repayment_method_id: "Repayment Method ID",
+  repayment_collected_date: "Collected Date",
+  repayment_description: "Description",
+  repayment_amount: "Repayment Amount",
+  principal_repayment_amount: "Principal Repaid",
+  interest_repayment_amount: "Interest Repaid",
+  fees_repayment_amount: "Fees Repaid",
+  penalty_repayment_amount: "Penalty Repaid",
+};
+
+// Fallback for anything not in the map above (e.g. undocumented custom fields /
+// loan_fee_id_*): snake_case -> Title Case, keeping numeric IDs and "ID" as-is.
+function prettifyColumn(key) {
+  if (COLUMN_LABELS[key]) return COLUMN_LABELS[key];
+  return key.split("_").map((w) => {
+    if (/^\d+$/.test(w)) return w;
+    if (w.toLowerCase() === "id") return "ID";
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join(" ");
+}
+
+// Sort raw values numerically when both sides parse as numbers, alphabetically
+// otherwise; missing values always sink to the bottom regardless of direction.
+function sortValue(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return v;
+  const n = Number(v);
+  return Number.isNaN(n) ? v : n;
+}
+function compareRaw(a, b, dir) {
+  const va = sortValue(a), vb = sortValue(b);
+  if (va === null && vb === null) return 0;
+  if (va === null) return 1;
+  if (vb === null) return -1;
+  if (typeof va === "number" && typeof vb === "number") return dir * (va - vb);
+  return dir * String(va).localeCompare(String(vb));
+}
+
+// Estimated single-row height (px) used to size the virtualization window below.
+// Rows wrap to a variable number of lines, so this is an approximation, not exact.
+const ROW_HEIGHT_ESTIMATE = 70;
+const OVERSCAN_ROWS = 12;
+
+function RawTable({ rows, rowKey, storageKey, title, blurb, emptyLabel }) {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState({ key: null, dir: 1 });
+  const [colPickerOpen, setColPickerOpen] = useState(false);
+  const colPickerRef = useRef(null);
+  const tbodyRef = useRef(null);
+  const [range, setRange] = useState({ start: 0, end: 60 });
+  const columns = useMemo(() => (rows.length ? Object.keys(rows[0]) : []), [rows]);
+
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(storageKey) || "[]")); }
+    catch { return new Set(); }
+  });
+  const toggleCol = (key) => {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem(storageKey, JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const setAllCols = (hide) => {
+    const next = hide ? new Set(columns.slice(1)) : new Set();
+    localStorage.setItem(storageKey, JSON.stringify([...next]));
+    setHiddenCols(next);
+  };
+  const visibleCols = columns.filter((c) => !hiddenCols.has(c));
+
+  useEffect(() => {
+    if (!colPickerOpen) return;
+    const h = (e) => { if (colPickerRef.current && !colPickerRef.current.contains(e.target)) setColPickerOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [colPickerOpen]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => columns.some((c) => String(r[c] ?? "").toLowerCase().includes(q)));
+  }, [rows, query, columns]);
+
+  const sorted = useMemo(() => {
+    if (!sort.key) return filtered;
+    const arr = [...filtered];
+    arr.sort((a, b) => compareRaw(a[sort.key], b[sort.key], sort.dir));
+    return arr;
+  }, [filtered, sort]);
+
+  const toggleSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+
+  // Only render <tr> elements near the visible viewport — these tables can hold thousands
+  // of wrapped-text rows, and mounting/reordering that many real DOM nodes at once (e.g. on
+  // first navigation to the page, or on sort) is what causes the multi-hundred-ms lag.
+  useEffect(() => {
+    const scroller = document.querySelector(".ws-scroll");
+    if (!scroller || !tbodyRef.current) return;
+    let raf = null;
+    const compute = () => {
+      raf = null;
+      if (!tbodyRef.current) return;
+      const wrapTop = tbodyRef.current.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      const viewTop = scroller.scrollTop - wrapTop;
+      const viewBottom = viewTop + scroller.clientHeight;
+      const start = Math.max(0, Math.floor(viewTop / ROW_HEIGHT_ESTIMATE) - OVERSCAN_ROWS);
+      const end = Math.min(sorted.length, Math.ceil(viewBottom / ROW_HEIGHT_ESTIMATE) + OVERSCAN_ROWS);
+      setRange({ start, end });
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(compute); };
+    compute();
+    scroller.addEventListener("scroll", onScroll);
+    window.addEventListener("resize", onScroll);
+    return () => { scroller.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); if (raf) cancelAnimationFrame(raf); };
+  }, [sorted.length]);
+
+  const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : String(v));
+
+  const exportCSV = () => {
+    const esc = (v) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const lines = [visibleCols.map((c) => esc(prettifyColumn(c))).join(",")];
+    sorted.forEach((r) => lines.push(visibleCols.map((c) => esc(r[c])).join(",")));
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = title.toLowerCase().replace(/\s+/g, "_") + ".csv";
+    a.click();
+  };
+
+  return (
+    <div className="page table-page">
+      <div className="hero">
+        <div>
+          <h1 className="hero-title">{title}</h1>
+          <p className="hero-sub">{blurb}</p>
+        </div>
+      </div>
+
+      <div className="filters">
+        <div className="filters-top">
+          <div className="search">
+            {ICON.search}
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all columns…" />
+            {query && <button className="search-x" onClick={() => setQuery("")}>&times;</button>}
+          </div>
+          <div className="filters-actions">
+            <span className="count">{sorted.length}<span className="count-sub"> / {rows.length}</span></span>
+            <button className="btn-ghost" onClick={exportCSV}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0L5 7m3 3l3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Export CSV
+            </button>
+            <div style={{ position: "relative" }} ref={colPickerRef}>
+              <button className="btn-ghost" onClick={() => setColPickerOpen((o) => !o)}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 4h14M1 8h14M1 12h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><rect x="9.5" y="2.5" width="4" height="3" rx="0.75" fill="var(--surface)" stroke="currentColor" strokeWidth="1.2"/></svg>
+                Columns
+                {hiddenCols.size > 0 && <span style={{ display: "inline-grid", placeItems: "center", minWidth: 18, height: 18, borderRadius: 999, background: "var(--brand)", color: "#fff", fontSize: 10, fontFamily: "var(--mono)", fontWeight: 600, padding: "0 4px" }}>{hiddenCols.size}</span>}
+              </button>
+              {colPickerOpen && (
+                <div className="col-picker">
+                  <div className="col-picker-actions">
+                    <button className="link" onClick={() => setAllCols(false)}>Select all</button>
+                    <button className="link" onClick={() => setAllCols(true)}>Unselect all</button>
+                  </div>
+                  {columns.slice(1).map((c) => (
+                    <label key={c} className="col-picker-row">
+                      <input type="checkbox" checked={!hiddenCols.has(c)} onChange={() => toggleCol(c)} />
+                      {prettifyColumn(c)}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="table-wrap raw-wrap">
+        <table className="ptable raw-table">
+          <thead>
+            <tr>
+              {visibleCols.map((c, i) => (
+                <th key={c} className={i === 0 ? "sticky-col" : ""} onClick={() => toggleSort(c)}>
+                  <span className="th-inner">
+                    {prettifyColumn(c)}
+                    <span className={"sort-ind" + (sort.key === c ? " on" : "")}>
+                      {sort.key === c ? (sort.dir === 1 ? "↑" : "↓") : "↕"}
+                    </span>
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody ref={tbodyRef}>
+            {range.start > 0 && (
+              <tr aria-hidden="true"><td colSpan={visibleCols.length || 1} style={{ height: range.start * ROW_HEIGHT_ESTIMATE, padding: 0, border: "none" }}></td></tr>
+            )}
+            {sorted.slice(range.start, range.end).map((r, i) => {
+              const ri = range.start + i;
+              return (
+                <tr key={r[rowKey] ?? ri}>
+                  {visibleCols.map((c, ci) => (
+                    <td key={c} className={ci === 0 ? "sticky-col" : ""}>{fmt(r[c])}</td>
+                  ))}
+                </tr>
+              );
+            })}
+            {range.end < sorted.length && (
+              <tr aria-hidden="true"><td colSpan={visibleCols.length || 1} style={{ height: (sorted.length - range.end) * ROW_HEIGHT_ESTIMATE, padding: 0, border: "none" }}></td></tr>
+            )}
+            {sorted.length === 0 && (
+              <tr><td colSpan={visibleCols.length || 1} className="empty">{emptyLabel}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function LoanDatabase() {
+  return (
+    <RawTable
+      rows={DATA.rawLoans || []}
+      rowKey="loan_id"
+      storageKey="pc_hiddenCols_rawLoans"
+      title="Loan Database"
+      blurb='Loandisk raw loan data'
+      emptyLabel="No loans match this search."
+    />
+  );
+}
+
+function RepaymentDatabase() {
+  return (
+    <RawTable
+      rows={DATA.rawRepayments || []}
+      rowKey="repayment_id"
+      storageKey="pc_hiddenCols_rawRepayments"
+      title="Repayment Database"
+      blurb='Loandisk raw repayment data'
+      emptyLabel="No repayments match this search."
+    />
   );
 }
 
@@ -476,31 +768,39 @@ const ICON = {
   eye: <svg viewBox="0 0 20 20" fill="none"><path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5z" stroke="currentColor" strokeWidth="1.6"/><circle cx="10" cy="10" r="2.2" stroke="currentColor" strokeWidth="1.6"/></svg>,
   exit: <svg viewBox="0 0 20 20" fill="none"><path d="M12 3H5a2 2 0 00-2 2v10a2 2 0 002 2h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M9 10h8m0 0l-3-3m3 3l-3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   report: <svg viewBox="0 0 20 20" fill="none"><path d="M5 3h7l3 3v11a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.6"/><path d="M7 10v4M10 8v6M13 11v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+  db: <svg viewBox="0 0 20 20" fill="none"><ellipse cx="10" cy="5" rx="7" ry="2.5" stroke="currentColor" strokeWidth="1.6"/><path d="M3 5v10c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V5" stroke="currentColor" strokeWidth="1.6"/><path d="M3 10c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5" stroke="currentColor" strokeWidth="1.6"/></svg>,
+  receipt: <svg viewBox="0 0 20 20" fill="none"><path d="M5 2.5h10v15l-2-1.3-1.7 1.3-1.6-1.3-1.7 1.3-1.7-1.3-1.3 1.3v-15z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="M7.3 7h5.4M7.3 10h5.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
   cash: <svg viewBox="0 0 20 20" fill="none"><rect x="2.5" y="5" width="15" height="10" rx="2" stroke="currentColor" strokeWidth="1.6"/><circle cx="10" cy="10" r="2" stroke="currentColor" strokeWidth="1.6"/></svg>,
   moon: <svg viewBox="0 0 20 20" fill="none"><path d="M16 11a6 6 0 11-7-7 5 5 0 007 7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>,
   lock: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3.5" y="7" width="9" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" strokeWidth="1.4"/></svg>,
   search: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
   bell: <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 8a4 4 0 018 0c0 4 1.5 5 1.5 5h-11S6 12 6 8z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M8.5 16a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.5"/></svg>,
+  sidebar: <svg viewBox="0 0 20 20" fill="none"><rect x="2.5" y="3.5" width="15" height="13" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 3.5v13" stroke="currentColor" strokeWidth="1.6"/></svg>,
 };
 
-function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack }) {
+function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, collapsed, onToggleCollapse }) {
   const exitCount = DATA.rows.filter((r) => r.action === "EXIT").length;
   const item = (key, label, icon, extra) => (
-    <button className={"side-link" + (section === key ? " on" : "")} onClick={() => onNav(key)}>
+    <button className={"side-link" + (section === key ? " on" : "")} onClick={() => onNav(key)} title={label}>
       {icon}<span>{label}</span>{extra}
     </button>
   );
   return (
-    <aside className="side">
+    <aside className={"side" + (collapsed ? " collapsed" : "")}>
       <div className="side-logo-row">
-        {canBack && (
-          <button className="side-back" onClick={onBack} title="Go back">
-            {ICON.back}
-          </button>
-        )}
         <button className="side-logo" onClick={onLogo} title="Back to landing">
           <img src="procredit-logo.png" alt="ProCredit" />
         </button>
+        <div className="side-logo-actions">
+          {canBack && (
+            <button className="side-back" onClick={onBack} title="Go back">
+              {ICON.back}
+            </button>
+          )}
+          <button className="side-back" onClick={onToggleCollapse} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            {ICON.sidebar}
+          </button>
+        </div>
       </div>
       <div className="side-sect">Portfolio</div>
       {item("overview", "Overview", ICON.grid)}
@@ -509,6 +809,8 @@ function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack }) {
       {item("exits", "Exits", ICON.exit, <span className="side-badge">{exitCount}</span>)}
       <div className="side-sect">Analysis</div>
       {item("analytics", "Analytics", ICON.report)}
+      {item("loandb", "Loan Database", ICON.db)}
+      {item("repaymentdb", "Repayment Database", ICON.receipt)}
 
       <div className="side-spacer"></div>
 
@@ -719,7 +1021,7 @@ function DashHome({ onRowClick, onDrill }) {
 function App() {
   const [status, setStatus] = useState("loading");
   const [errMsg, setErrMsg] = useState("");
-  const [view, setView] = useState("landing"); // landing | overview | table | analytics
+  const [view, setView] = useState("landing"); // landing | overview | table | analytics | loandb | repaymentdb
   const [section, setSection] = useState("overview");
   const [dark, setDark] = useState(true);
   const [noAnim, setNoAnim] = useState(false);
@@ -728,6 +1030,8 @@ function App() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState({ key: "principalBalance", dir: -1 });
   const [navHistory, setNavHistory] = useState([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("pc_sidebarCollapsed") === "1");
+  const toggleSidebar = () => setSidebarCollapsed((c) => { localStorage.setItem("pc_sidebarCollapsed", c ? "0" : "1"); return !c; });
 
   useEffect(() => {
     window.loadPortfolio()
@@ -794,6 +1098,8 @@ function App() {
     else if (key === "watchlist") { setFilters({ classification: "Watchlist" }); setView("table"); }
     else if (key === "exits") { setFilters({ action: "EXIT" }); setView("table"); }
     else if (key === "analytics") { setView("analytics"); }
+    else if (key === "loandb") { setView("loandb"); }
+    else if (key === "repaymentdb") { setView("repaymentdb"); }
   };
 
   const enterSearch = (q) => { pushHistory(view, section, filters, query); setQuery(q); setFilters({}); setSection("portfolio"); setView("table"); };
@@ -815,13 +1121,15 @@ function App() {
       )}
       {view !== "landing" && (
         <div className={"shell" + (dark ? "" : " light") + (noAnim ? " no-anim" : "")}>
-          <Sidebar section={section} onNav={onNav} dark={dark} setDark={toggleDark} onLogo={() => { setNavHistory([]); setView("landing"); }} onBack={goBack} canBack={navHistory.length > 0} />
+          <Sidebar section={section} onNav={onNav} dark={dark} setDark={toggleDark} onLogo={() => { setNavHistory([]); setView("landing"); }} onBack={goBack} canBack={navHistory.length > 0} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
           <div className="ws">
             <WsBar onSearch={enterSearch} onOpenTable={() => onNav("portfolio")} />
             <div className="ws-scroll">
               {view === "overview"   && <DashHome onRowClick={setDetail} onDrill={goTable} />}
               {view === "table"      && <Table onRowClick={setDetail} filters={filters} setFilters={setFilters} query={query} setQuery={setQuery} sort={sort} setSort={setSort} />}
               {view === "analytics"  && <Analytics onDrillTo={goTable} />}
+              {view === "loandb"     && <LoanDatabase />}
+              {view === "repaymentdb" && <RepaymentDatabase />}
             </div>
           </div>
           {detail && <Detail row={detail} onClose={() => setDetail(null)} />}

@@ -295,6 +295,8 @@
   .col-picker-row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; font-size: 13px; color: var(--ink-700); cursor: pointer; border-radius: 8px; transition: background .1s; user-select: none; }
   .col-picker-row:hover { background: var(--track); color: var(--ink-900); }
   .col-picker-row input[type="checkbox"] { accent-color: var(--brand); width: 14px; height: 14px; flex-shrink: 0; cursor: pointer; }
+  .col-picker-actions { display: flex; justify-content: space-between; gap: 10px; padding: 6px 14px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line-soft); }
+  .col-picker-actions .link { font-size: 12px; }
 
   /* table */
   .table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); overflow-x: auto; box-shadow: var(--shadow-card); }
@@ -323,6 +325,19 @@
   .sticky-col { position: sticky; left: 0; z-index: 3; background: var(--surface); box-shadow: 1px 0 0 var(--line-soft); overflow: hidden; max-width: 168px; }
   td.sticky-col span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ptable thead th.sticky-col { z-index: 6; background: rgba(248,250,252,.97); }
+
+  /* raw table variant — wrap long values instead of clipping/scrolling */
+  /* fixed layout: column widths come from the header row only, so the browser isn't forced to
+     measure every cell in every row (the default "auto" algorithm) just to size columns —
+     that full-table scan is the dominant cost on 2000+ row tables like Repayment Database */
+  .ptable.raw-table { table-layout: fixed; }
+  .ptable.raw-table th, .ptable.raw-table td { white-space: normal; word-break: break-word; vertical-align: top; }
+  .ptable.raw-table th { width: 160px; min-width: 130px; max-width: 240px; position: static; }
+  .ptable.raw-table td { max-width: 240px; font-size: 12.5px; line-height: 1.45; color: var(--ink-700); }
+  /* these tables can have 2000+ wrapped-text rows with no virtualization — skip layout/paint
+     for offscreen rows so every keystroke/sort/toggle doesn't re-layout the whole table */
+  .ptable.raw-table tbody tr { content-visibility: auto; contain-intrinsic-size: auto 90px; }
+  .ptable.raw-table .sticky-col { max-width: 200px; }
   .ptable tbody tr:hover td.sticky-col { background: oklch(0.975 0.006 250); }
   .ptable tbody tr.row-exit td.sticky-col { background: oklch(0.975 0.02 25); }
 
@@ -393,14 +408,29 @@
   .shell.no-anim, .shell.no-anim * { transition: none !important; }
 
   /* sidebar */
-  .side { width: 232px; flex-shrink: 0; display: flex; flex-direction: column; padding: 20px 16px; border-right: 1px solid var(--line); gap: 6px; overflow-y: auto; }
-  .side-logo-row { display: flex; align-items: flex-start; gap: 2px; }
-  .side-back { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; margin-top: 4px; border-radius: 8px; background: none; border: none; color: var(--ink-400); cursor: pointer; transition: background .12s, color .12s; flex-shrink: 0; }
+  .side { width: 232px; flex-shrink: 0; display: flex; flex-direction: column; padding: 20px 16px; border-right: 1px solid var(--line); gap: 6px; overflow-y: auto; overflow-x: hidden; transition: width .18s ease; }
+  .side-logo-row { display: flex; align-items: center; justify-content: space-between; gap: 2px; }
+  .side-logo-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .side-back { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: none; border: none; color: var(--ink-400); cursor: pointer; transition: background .12s, color .12s; flex-shrink: 0; }
   .side-back:hover { background: var(--track); color: var(--ink-800); }
   .side-back svg { width: 16px; height: 16px; }
-  .side-logo { display: flex; align-items: center; padding: 4px 8px 18px; border: none; background: none; cursor: pointer; }
+  .side-logo { display: flex; align-items: center; padding: 4px 8px 18px; border: none; background: none; cursor: pointer; min-width: 0; }
   .side-logo img { height: 30px; width: auto; filter: brightness(0) invert(1); }
   .shell.light .side-logo img { filter: none; }
+
+  /* collapsed sidebar — icon rail, logo mark retained */
+  .side.collapsed { width: 84px; }
+  .side.collapsed .side-logo-row { flex-direction: column; align-items: center; gap: 8px; }
+  /* logo file is a wide icon+wordmark lockup — crop to just the icon glyph (~17% of width) by
+     rendering it taller and clipping the container, instead of squashing the whole lockup in */
+  .side.collapsed .side-logo { width: 28px; height: 60px; overflow: hidden; justify-content: flex-start; align-items: flex-start; padding: 0; }
+  .side.collapsed .side-logo img { height: 60px; }
+  .side.collapsed .side-logo-actions { flex-direction: column; gap: 6px; }
+  .side.collapsed .side-sect, .side.collapsed .side-link span, .side.collapsed .side-badge,
+  .side.collapsed .side-toggle span, .side.collapsed .side-toggle svg, .side.collapsed .side-card { display: none; }
+  .side.collapsed .side-link { justify-content: center; padding: 10px; }
+  .side.collapsed .side-toggle { justify-content: center; padding: 10px 0; }
+  .side.collapsed .switch { margin-left: 0; }
   .side-sect { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-400); padding: 14px 12px 6px; font-weight: 600; }
   .side-link {
     display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
@@ -520,6 +550,8 @@
   /* page / table adjustments inside shell */
   .shell .page { max-width: none; margin: 0; padding: 0; }
   .shell .table-wrap { max-height: calc(100vh - 280px); overflow: auto; }
+  /* raw-data tables grow with content and scroll with the page instead of in their own box */
+  .shell .table-wrap.raw-wrap { max-height: none; overflow-y: visible; }
 
   @media (max-width: 1100px) {
     .bal-body { grid-template-columns: 1fr; }
@@ -534,8 +566,8 @@
 <body>
   <div id="root"></div>
 
-  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
