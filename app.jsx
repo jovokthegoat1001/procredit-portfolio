@@ -70,7 +70,7 @@ const COLUMNS = [
 ];
 
 function Filters({ filters, setFilters, meta, count, total, onReset, onExport, query, setQuery, hiddenCols, onToggleCol, onSetAllCols }) {
-  const [open, setOpen] = useState(() => Object.values(filters).filter(Boolean).length > 0);
+  const [open, setOpen] = useState(false);
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const colPickerRef = useRef(null);
   const activeCount = Object.values(filters).filter(Boolean).length;
@@ -134,7 +134,7 @@ function Filters({ filters, setFilters, meta, count, total, onReset, onExport, q
         </div>
       </div>
       {open && (
-        <div className="filters-rows" style={{ marginTop: 14 }}>
+        <div className="filters-rows">
           <div className="frow"><span className="frow-label">Classification</span><div className="chips">{meta.classifications.map((c) => chip(c, "classification", c))}</div></div>
           {meta.riskTiers && <div className="frow"><span className="frow-label">Risk Tier</span><div className="chips">{meta.riskTiers.map((t) => chip(t, "riskTier", t))}</div></div>}
           <div className="frow"><span className="frow-label">Action</span><div className="chips">{meta.actions.map((a) => chip(a, "action", a))}</div></div>
@@ -365,8 +365,22 @@ function compareRaw(a, b, dir) {
 const ROW_HEIGHT_ESTIMATE = 70;
 const OVERSCAN_ROWS = 12;
 
-function RawTable({ rows, rowKey, storageKey, title, blurb, emptyLabel }) {
+// Loandisk date columns (repayment_collected_date, due_date, etc.) come through
+// Supabase as "MM/DD/YYYY" strings, not ISO — parse into a real Date (local
+// midnight) so year/range filtering works instead of doing string comparison.
+function parseMDY(s) {
+  if (!s) return null;
+  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  return new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+}
+
+function RawTable({ rows, rowKey, storageKey, title, blurb, emptyLabel, dateColumn }) {
   const [query, setQuery] = useState("");
+  const [yearFilter, setYearFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 1 });
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const colPickerRef = useRef(null);
@@ -400,11 +414,39 @@ function RawTable({ rows, rowKey, storageKey, title, blurb, emptyLabel }) {
     return () => document.removeEventListener("mousedown", h);
   }, [colPickerOpen]);
 
+  // Parsed once per row per data load, then reused by both the year dropdown and
+  // the range filter below instead of re-parsing the same "MM/DD/YYYY" string twice.
+  const parsedDates = useMemo(() => {
+    if (!dateColumn) return null;
+    return rows.map((r) => parseMDY(r[dateColumn]));
+  }, [rows, dateColumn]);
+
+  const years = useMemo(() => {
+    if (!parsedDates) return [];
+    const set = new Set();
+    parsedDates.forEach((d) => { if (d) set.add(d.getFullYear()); });
+    return [...set].sort((a, b) => b - a);
+  }, [parsedDates]);
+
+  const dateFiltered = useMemo(() => {
+    if (!parsedDates || (!yearFilter && !dateFrom && !dateTo)) return rows;
+    const from = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
+    const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
+    return rows.filter((r, i) => {
+      const d = parsedDates[i];
+      if (!d) return false;
+      if (yearFilter && d.getFullYear() !== Number(yearFilter)) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+  }, [rows, parsedDates, yearFilter, dateFrom, dateTo]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => columns.some((c) => String(r[c] ?? "").toLowerCase().includes(q)));
-  }, [rows, query, columns]);
+    if (!q) return dateFiltered;
+    return dateFiltered.filter((r) => columns.some((c) => String(r[c] ?? "").toLowerCase().includes(q)));
+  }, [dateFiltered, query, columns]);
 
   const sorted = useMemo(() => {
     if (!sort.key) return filtered;
@@ -473,6 +515,14 @@ function RawTable({ rows, rowKey, storageKey, title, blurb, emptyLabel }) {
           </div>
           <div className="filters-actions">
             <span className="count">{sorted.length}<span className="count-sub"> / {rows.length}</span></span>
+            {dateColumn && (
+              <button className="btn-ghost" onClick={() => setFiltersOpen((o) => !o)} style={{ gap: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                Filters
+                {(yearFilter || dateFrom || dateTo) && <span style={{ display: "inline-grid", placeItems: "center", minWidth: 18, height: 18, borderRadius: 999, background: "var(--brand)", color: "#fff", fontSize: 10, fontFamily: "var(--mono)", fontWeight: 600, padding: "0 4px" }}>{[yearFilter, dateFrom, dateTo].filter(Boolean).length}</span>}
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transition: "transform .2s", transform: filtersOpen ? "rotate(180deg)" : "rotate(0deg)" }}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            )}
             <button className="btn-ghost" onClick={exportCSV}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0L5 7m3 3l3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               Export CSV
@@ -500,6 +550,24 @@ function RawTable({ rows, rowKey, storageKey, title, blurb, emptyLabel }) {
             </div>
           </div>
         </div>
+        {dateColumn && filtersOpen && (
+          <div className="filters-rows">
+            <div className="frow">
+              <span className="frow-label">Year</span>
+              <select className="select" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+                <option value="">All years</option>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <span className="frow-label" style={{ width: "auto" }}>Date range</span>
+              <input type="date" className="select" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              <span style={{ color: "var(--ink-400)", fontSize: 12 }}>to</span>
+              <input type="date" className="select" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              {(yearFilter || dateFrom || dateTo) && (
+                <button className="link" onClick={() => { setYearFilter(""); setDateFrom(""); setDateTo(""); }}>Clear</button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="table-wrap raw-wrap">
@@ -566,7 +634,8 @@ function RepaymentDatabase() {
       storageKey="pc_hiddenCols_rawRepayments"
       title="Repayment Database"
       blurb='Loandisk raw repayment data'
-      emptyLabel="No repayments match this search."
+      emptyLabel="No repayments match this search or date filter."
+      dateColumn="repayment_collected_date"
     />
   );
 }
@@ -776,9 +845,10 @@ const ICON = {
   search: <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
   bell: <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 8a4 4 0 018 0c0 4 1.5 5 1.5 5h-11S6 12 6 8z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M8.5 16a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.5"/></svg>,
   sidebar: <svg viewBox="0 0 20 20" fill="none"><rect x="2.5" y="3.5" width="15" height="13" rx="2" stroke="currentColor" strokeWidth="1.6"/><path d="M8 3.5v13" stroke="currentColor" strokeWidth="1.6"/></svg>,
+  menu: <svg viewBox="0 0 20 20" fill="none"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>,
 };
 
-function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, collapsed, onToggleCollapse }) {
+function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, collapsed, onToggleCollapse, mobileOpen }) {
   const exitCount = DATA.rows.filter((r) => r.action === "EXIT").length;
   const item = (key, label, icon, extra) => (
     <button className={"side-link" + (section === key ? " on" : "")} onClick={() => onNav(key)} title={label}>
@@ -786,7 +856,7 @@ function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, colla
     </button>
   );
   return (
-    <aside className={"side" + (collapsed ? " collapsed" : "")}>
+    <aside className={"side" + (collapsed && !mobileOpen ? " collapsed" : "") + (mobileOpen ? " mobile-open" : "")}>
       <div className="side-logo-row">
         <button className="side-logo" onClick={onLogo} title="Back to landing">
           <img src="procredit-logo.png" alt="ProCredit" />
@@ -797,7 +867,7 @@ function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, colla
               {ICON.back}
             </button>
           )}
-          <button className="side-back" onClick={onToggleCollapse} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+          <button className="side-back side-collapse-btn" onClick={onToggleCollapse} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
             {ICON.sidebar}
           </button>
         </div>
@@ -825,10 +895,13 @@ function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, colla
   );
 }
 
-function WsBar({ onSearch, onOpenTable }) {
+function WsBar({ onSearch, onOpenTable, onOpenMobileNav }) {
   const [q, setQ] = useState("");
   return (
     <div className="wsbar">
+      <button className="mobile-menu-btn" onClick={onOpenMobileNav} title="Open menu" aria-label="Open menu">
+        {ICON.menu}
+      </button>
       <div className="wssearch">
         {ICON.search}
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search economic group or industry…"
@@ -1032,6 +1105,7 @@ function App() {
   const [navHistory, setNavHistory] = useState([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("pc_sidebarCollapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => { localStorage.setItem("pc_sidebarCollapsed", c ? "0" : "1"); return !c; });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     window.loadPortfolio()
@@ -1093,6 +1167,7 @@ function App() {
   const onNav = (key) => {
     pushHistory(view, section, filters, query);
     setSection(key);
+    setMobileNavOpen(false);
     if (key === "overview") { setView("overview"); }
     else if (key === "portfolio") { setFilters({}); setView("table"); }
     else if (key === "watchlist") { setFilters({ classification: "Watchlist" }); setView("table"); }
@@ -1121,9 +1196,10 @@ function App() {
       )}
       {view !== "landing" && (
         <div className={"shell" + (dark ? "" : " light") + (noAnim ? " no-anim" : "")}>
-          <Sidebar section={section} onNav={onNav} dark={dark} setDark={toggleDark} onLogo={() => { setNavHistory([]); setView("landing"); }} onBack={goBack} canBack={navHistory.length > 0} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+          <Sidebar section={section} onNav={onNav} dark={dark} setDark={toggleDark} onLogo={() => { setNavHistory([]); setMobileNavOpen(false); setView("landing"); }} onBack={() => { setMobileNavOpen(false); goBack(); }} canBack={navHistory.length > 0} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} mobileOpen={mobileNavOpen} />
+          {mobileNavOpen && <div className="mobile-nav-overlay" onClick={() => setMobileNavOpen(false)}></div>}
           <div className="ws">
-            <WsBar onSearch={enterSearch} onOpenTable={() => onNav("portfolio")} />
+            <WsBar onSearch={enterSearch} onOpenTable={() => onNav("portfolio")} onOpenMobileNav={() => setMobileNavOpen(true)} />
             <div className="ws-scroll">
               {view === "overview"   && <DashHome onRowClick={setDetail} onDrill={goTable} />}
               {view === "table"      && <Table onRowClick={setDetail} filters={filters} setFilters={setFilters} query={query} setQuery={setQuery} sort={sort} setSort={setSort} />}

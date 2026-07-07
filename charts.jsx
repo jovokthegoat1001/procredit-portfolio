@@ -20,8 +20,8 @@ function Donut({ segments, size = 168, thickness = 26, centerLabel, centerSub, o
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20 }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)", flexShrink: 0 }}>
+    <div className="donut-row" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)", flexShrink: 0 }}>
         {segments.map((seg, i) => {
           const frac = seg.value / total;
           const len = frac * circ;
@@ -45,7 +45,7 @@ function Donut({ segments, size = 168, thickness = 26, centerLabel, centerSub, o
           return el;
         })}
       </svg>
-      <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0, maxHeight: legendMaxHeight, overflowY: "auto", paddingRight: 4 }}>
+      <div className="donut-legend" style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0, maxHeight: legendMaxHeight, overflowY: "auto", paddingRight: 4 }}>
         {segments.map((seg, i) => (
           <div key={i}
             ref={(el) => { legendRefs.current[i] = el; }}

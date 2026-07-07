@@ -119,6 +119,11 @@
     5906496: "Synergy Sourcing", // Dexter C. Dy
     6171493: "Synergy Sourcing", // Janice Elaine G. Dy
   };
+  // Loans that carry loan_status_id 3/4 (normally treated as restructured/stale — see
+  // liveLoans below) but are confirmed real, current exposure and should still count.
+  var FORCE_LIVE_LOAN_IDS = {
+    8213226: true, // loan 8213226, borrower 6171493 (Synergy Sourcing) — confirmed live by analyst
+  };
   function economicGroupFor(businessName, borrowerId) {
     if (BORROWER_ID_GROUP_OVERRIDE[borrowerId]) return BORROWER_ID_GROUP_OVERRIDE[borrowerId];
     var key = (businessName || "").trim().toLowerCase();
@@ -169,7 +174,7 @@
       // Status 3 behaves the same way (confirmed against the live Credit Engine total).
       // Summing either double-counts the exposure, so balance/risk math only looks at
       // live loans; interest already collected against the old loan is still real cash.
-      var liveLoans = loans.filter(function (l) { return l.loan_status_id !== 4 && l.loan_status_id !== 3; });
+      var liveLoans = loans.filter(function (l) { return FORCE_LIVE_LOAN_IDS[l.loan_id] || (l.loan_status_id !== 4 && l.loan_status_id !== 3); });
 
       // "Primary" loan drives display-only attributes only (industry/tier/bracket/name) —
       // falls back to the full loan list so a group with no live loans still has something
