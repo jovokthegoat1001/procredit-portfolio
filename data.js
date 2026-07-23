@@ -119,10 +119,15 @@
     5906496: "Synergy Sourcing", // Dexter C. Dy
     6171493: "Synergy Sourcing", // Janice Elaine G. Dy
   };
-  // Loans that carry loan_status_id 3/4 (normally treated as restructured/stale — see
-  // liveLoans below) but are confirmed real, current exposure and should still count.
+  // loan_status_id 3 lumps together Write-Offs and Credit-Counseling loans, and 4 is
+  // Restructured (see liveLoans below) — all excluded by default. These specific loans
+  // carry one of those statuses but are confirmed real, current exposure and should still
+  // count. NOTE: Supabase only syncs the numeric status, which can't tell a Write-Off from
+  // a Credit-Counseling loan (both are "3"), so a live credit-counseling loan has to be
+  // listed here by hand until the textual Loandisk status gets synced.
   var FORCE_LIVE_LOAN_IDS = {
-    8213226: true, // loan 8213226, borrower 6171493 (Synergy Sourcing) — confirmed live by analyst
+    8213226: true,  // Janice Dy (Synergy Sourcing) — Write-Off in Loandisk, confirmed live by analyst
+    11444257: true, // Loyola Dell — Credit Counseling (active ₱5M, 0 DPD), not a write-off
   };
   function economicGroupFor(businessName, borrowerId) {
     if (BORROWER_ID_GROUP_OVERRIDE[borrowerId]) return BORROWER_ID_GROUP_OVERRIDE[borrowerId];
@@ -168,12 +173,14 @@
       var loans = byGroup[key];
       id++;
 
-      // Loandisk doesn't zero out a loan's balance when it's restructured into a new
-      // loan — the old loan (loan_status_id 4) keeps showing its stale pre-restructure
-      // balance forever, while a new loan_id carries the real current obligation.
-      // Status 3 behaves the same way (confirmed against the live Credit Engine total).
-      // Summing either double-counts the exposure, so balance/risk math only looks at
-      // live loans; interest already collected against the old loan is still real cash.
+      // loan_status_id 4 = Restructured: Loandisk doesn't zero out the old loan's balance
+      // when it's restructured into a new loan, so the old loan keeps showing its stale
+      // pre-restructure balance forever while a new loan_id carries the real obligation —
+      // summing it double-counts the exposure. loan_status_id 3 = Write-Off (a charged-off
+      // asset, not performing principal). Both are dropped from balance/risk math; interest
+      // already collected against them is still real cash. FORCE_LIVE_LOAN_IDS adds back the
+      // handful of 3/4 loans that are actually live exposure (e.g. credit-counseling loans
+      // mis-bucketed under status 3).
       var liveLoans = loans.filter(function (l) { return FORCE_LIVE_LOAN_IDS[l.loan_id] || (l.loan_status_id !== 4 && l.loan_status_id !== 3); });
 
       // "Primary" loan drives display-only attributes only (industry/tier/bracket/name) —
@@ -282,7 +289,7 @@
 
     var totalInterest = rows.reduce(function (s, r) { return s + r._interest; }, 0);
     var totalGrossDisb = rows.reduce(function (s, r) { return s + r._grossDisb; }, 0);
-    var activeLoans = loanRows.filter(function (l) { return l.loan_status_id !== 4 && l.loan_status_id !== 3 && parseNum(l.principal_balance_amount) > 0; }).length;
+    var activeLoans = loanRows.filter(function (l) { return (FORCE_LIVE_LOAN_IDS[l.loan_id] || (l.loan_status_id !== 4 && l.loan_status_id !== 3)) && parseNum(l.principal_balance_amount) > 0; }).length;
 
     return {
       rows: rows,
