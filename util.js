@@ -19,6 +19,12 @@
     return (neg ? "-" : "") + PESO + v.toLocaleString("en-US");
   }
 
+  function exactPHP(n) {
+    const neg = n < 0;
+    const v = Math.abs(n);
+    return (neg ? "-" : "") + PESO + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   function commas(n) {
     const neg = n < 0;
     const v = Math.abs(Math.round(n));
@@ -65,5 +71,5 @@
     "#5c1010", "#7d8a99", "oklch(0.6 0.1 280)", "oklch(0.65 0.12 200)",
   ];
 
-  window.U = { PESO, abbrevPHP, fullPHP, commas, pct, ACTION_STYLE, CLASS_STYLE, DPD_STYLE, INDUSTRY_PALETTE };
+  window.U = { PESO, abbrevPHP, fullPHP, exactPHP, commas, pct, ACTION_STYLE, CLASS_STYLE, DPD_STYLE, INDUSTRY_PALETTE };
 })();

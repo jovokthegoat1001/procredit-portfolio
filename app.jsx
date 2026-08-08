@@ -41,11 +41,11 @@ function Num({ value, kind = "abbrev", muted, neg }) {
   );
 }
 
-function Kpi({ label, value, sub, accent }) {
+function Kpi({ label, value, sub }) {
   return (
     <div className="kpi">
       <div className="kpi-label">{label}</div>
-      <div className="kpi-value" style={accent ? { color: accent } : null}>{value}</div>
+      <div className="kpi-value">{value}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );
@@ -649,7 +649,7 @@ function dpdBucketFor(dpd) {
   return "90+";
 }
 
-function Detail({ row, onClose }) {
+function Detail({ row, onClose, onOpenReport }) {
   useEffect(() => {
     const h = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -679,6 +679,9 @@ function Detail({ row, onClose }) {
                 <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--warn)", border: "1px solid var(--warn-bd)", background: "var(--warn-bg)", borderRadius: 5, padding: "3px 8px" }}>RESTRUCTURED</span>
               )}
             </div>
+            <button className="btn-ghost" style={{ marginTop: 14 }} onClick={() => onOpenReport(row.economicGroup)}>
+              View performance report &rarr;
+            </button>
           </div>
           <button className="drawer-x" onClick={onClose}>&times;</button>
         </div>
@@ -889,7 +892,7 @@ function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, colla
       </div>
       <div className="side-card">
         <div className="side-card-row"><span className="side-card-dot"></span><span className="side-card-t">Live status</span></div>
-        <div className="side-card-s">Supabase &middot; <b>{DATA.meta.updated.split(" ")[0]}</b><br/>Real-time portfolio data.</div>
+        <div className="side-card-s"><b>{DATA.meta.updated.split(" ")[0]}</b><br/>Real-time portfolio data.</div>
       </div>
     </aside>
   );
@@ -913,53 +916,30 @@ function WsBar({ onSearch, onOpenTable, onOpenMobileNav }) {
   );
 }
 
-function genSeries(end, n, seed, vol) {
-  let a = seed * 9973 + 1;
-  const rnd = () => { a = (a * 9301 + 49297) % 233280; return a / 233280; };
-  const arr = [];
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1);
-    arr.push(Math.max(end * 0.45, end * (0.8 + 0.2 * t) + end * vol * (rnd() - 0.5)));
-  }
-  arr[n - 1] = end;
-  return arr;
-}
-
-function Sparkline({ series, color }) {
-  const w = 460, h = 132, pad = 8;
-  const min = Math.min(...series), max = Math.max(...series), range = (max - min) || 1;
-  const pts = series.map((v, i) => [pad + (i / (series.length - 1)) * (w - 2 * pad), pad + (1 - (v - min) / range) * (h - 2 * pad)]);
-  const line = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
-  const area = line + ` L${w - pad},${h - pad} L${pad},${h - pad} Z`;
-  const last = pts[pts.length - 1];
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none" style={{ display: "block", overflow: "visible" }}>
-      <defs><linearGradient id="spk" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor={color} stopOpacity="0.32" />
-        <stop offset="100%" stopColor={color} stopOpacity="0" />
-      </linearGradient></defs>
-      <path d={area} fill="url(#spk)" />
-      <path d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      <circle cx={last[0]} cy={last[1]} r="4" fill={color} stroke="var(--surface)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
 function DashHome({ onRowClick, onDrill }) {
-  const { rows, totals, meta } = DATA;
-  const [period, setPeriod] = useState("Week");
+  const { rows, totals, meta, history } = DATA;
+  const [period, setPeriod] = useState("Monthly"); // Monthly | Annually | Current
   const [tab, setTab] = useState("principal");
   const [hiMix, setHiMix] = useState(null);
 
   const metricVal = tab === "principal" ? totals.principalBalance : totals.overduePrincipal;
-  const periods = {
-    Today: { labels: ["9a", "11a", "1p", "3p", "5p", "7p", "Now"], n: 7, seed: 11 },
-    Week:  { labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], n: 7, seed: 23 },
-    Month: { labels: ["W1", "W2", "W3", "W4", "W5", "W6"], n: 6, seed: 37 },
-  };
-  const P = periods[period];
-  const series = genSeries(metricVal, P.n, P.seed + (tab === "principal" ? 0 : 5), tab === "principal" ? 0.05 : 0.16);
-  const chg = (series[series.length - 1] - series[0]) / series[0];
+  const metricOf = (p) => (tab === "principal" ? p.principalBalance : p.overduePrincipal);
+
+  // Real totals from Test - Historical DB, with the live current total appended as
+  // "Now" so the line reflects right-now rather than stopping at the last snapshot.
+  const fullSeries = (history && history.totalSeries) || [];
+  const monthlySeries = fullSeries.map((p) => ({ x: p.label, y: metricOf(p) }));
+  if (monthlySeries.length) monthlySeries.push({ x: "Now", y: metricVal });
+
+  // One point per calendar year (that year's latest snapshot) — fullSeries is already
+  // chronological, so the last write per year wins and lands on the latest month seen.
+  const annualByYear = {};
+  fullSeries.forEach((p) => { annualByYear[p.date.getFullYear()] = p; });
+  const annualSeries = Object.keys(annualByYear).sort().map((y) => ({ x: y, y: metricOf(annualByYear[y]) }));
+  if (annualSeries.length) annualSeries.push({ x: "Now", y: metricVal });
+
+  const series = period === "Annually" ? annualSeries : monthlySeries;
+  const chg = series.length > 1 && series[0].y ? (series[series.length - 1].y - series[0].y) / series[0].y : 0;
   const sparkColor = tab === "principal" ? "var(--brand)" : "var(--neg)";
 
   const grp = (cls) => rows.filter((r) => cls.includes(r.classification)).reduce((s, r) => s + r.principalBalance, 0);
@@ -987,7 +967,7 @@ function DashHome({ onRowClick, onDrill }) {
     <div>
       <div className="greet">
         <div className="seg">
-          {["Today", "Week", "Month"].map((p) => (
+          {["Monthly", "Annually", "Current"].map((p) => (
             <button key={p} className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>{p}</button>
           ))}
         </div>
@@ -1004,15 +984,25 @@ function DashHome({ onRowClick, onDrill }) {
         <div className="bal-body">
           <div>
             <div className="bal-num">{U.abbrevPHP(metricVal)}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-              <div className={"bal-chg " + (chg >= 0 ? "up" : "down")}>{chg >= 0 ? up : down}{U.pct(Math.abs(chg), 1)}</div>
-              <span style={{ fontSize: 12.5, color: "var(--ink-500)" }}>vs last {period.toLowerCase()}</span>
-            </div>
+            {period !== "Current" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                <div className={"bal-chg " + (chg >= 0 ? "up" : "down")}>{chg >= 0 ? up : down}{U.pct(Math.abs(chg), 1)}</div>
+                <span style={{ fontSize: 12.5, color: "var(--ink-500)" }}>{period === "Annually" ? "trailing annual" : "trailing monthly"}</span>
+              </div>
+            )}
             <div className="bal-sub">{U.fullPHP(metricVal)} across {totals.borrowers} economic groups</div>
           </div>
           <div className="spark-wrap">
-            <Sparkline series={series} color={sparkColor} />
-            <div className="spark-x">{P.labels.map((l, i) => <span key={i}>{l}</span>)}</div>
+            {period === "Current" ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 220, gap: 8 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--pos)" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--pos)" }}></span>Live
+                </span>
+                <span style={{ fontSize: 12.5, color: "var(--ink-500)" }}>As of {meta.updated}</span>
+              </div>
+            ) : (
+              <LineChart series={series} color={sparkColor} height={220} fmt={U.exactPHP} />
+            )}
           </div>
         </div>
         <div className="substats">
@@ -1094,7 +1084,7 @@ function DashHome({ onRowClick, onDrill }) {
 function App() {
   const [status, setStatus] = useState("loading");
   const [errMsg, setErrMsg] = useState("");
-  const [view, setView] = useState("landing"); // landing | overview | table | analytics | loandb | repaymentdb
+  const [view, setView] = useState("landing"); // landing | overview | table | analytics | loandb | repaymentdb | groupReport
   const [section, setSection] = useState("overview");
   const [dark, setDark] = useState(true);
   const [noAnim, setNoAnim] = useState(false);
@@ -1106,6 +1096,7 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("pc_sidebarCollapsed") === "1");
   const toggleSidebar = () => setSidebarCollapsed((c) => { localStorage.setItem("pc_sidebarCollapsed", c ? "0" : "1"); return !c; });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [reportGroup, setReportGroup] = useState(null);
 
   useEffect(() => {
     window.loadPortfolio()
@@ -1179,6 +1170,13 @@ function App() {
 
   const enterSearch = (q) => { pushHistory(view, section, filters, query); setQuery(q); setFilters({}); setSection("portfolio"); setView("table"); };
 
+  const openGroupReport = (economicGroup) => {
+    pushHistory(view, section, filters, query);
+    setDetail(null);
+    setReportGroup(economicGroup);
+    setView("groupReport");
+  };
+
   const toggleDark = () => {
     setNoAnim(true);
     setDark((d) => !d);
@@ -1206,9 +1204,10 @@ function App() {
               {view === "analytics"  && <Analytics onDrillTo={goTable} />}
               {view === "loandb"     && <LoanDatabase />}
               {view === "repaymentdb" && <RepaymentDatabase />}
+              {view === "groupReport" && <GroupReport economicGroup={reportGroup} />}
             </div>
           </div>
-          {detail && <Detail row={detail} onClose={() => setDetail(null)} />}
+          {detail && <Detail row={detail} onClose={() => setDetail(null)} onOpenReport={openGroupReport} />}
         </div>
       )}
     </div>

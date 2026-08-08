@@ -11,6 +11,7 @@
   var LOAN_TABLE = "ProCredit Loan Database";
   var REPAYMENT_TABLE = "ProCredit Repayment Database";
   var CLASSIFICATION_TABLE = "ProCredit  Classification Data";
+  var HISTORY_TABLE = "Test - Historical DB";
 
   var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -120,19 +121,119 @@
     6171493: "Synergy Sourcing", // Janice Elaine G. Dy
   };
   // loan_status_id 3 lumps together Write-Offs and Credit-Counseling loans, and 4 is
-  // Restructured (see liveLoans below) — all excluded by default. These specific loans
-  // carry one of those statuses but are confirmed real, current exposure and should still
-  // count. NOTE: Supabase only syncs the numeric status, which can't tell a Write-Off from
-  // a Credit-Counseling loan (both are "3"), so a live credit-counseling loan has to be
-  // listed here by hand until the textual Loandisk status gets synced.
-  var FORCE_LIVE_LOAN_IDS = {
-    8213226: true,  // Janice Dy (Synergy Sourcing) — Write-Off in Loandisk, confirmed live by analyst
-    11444257: true, // Loyola Dell — Credit Counseling (active ₱5M, 0 DPD), not a write-off
+  // Restructured (see liveLoans below) — all excluded by default. NOTE: Supabase only
+  // syncs the numeric status, which can't tell a Write-Off from a Credit-Counseling
+  // loan (both are "3"), so a live credit-counseling loan has to be listed here by
+  // hand until the textual Loandisk status gets synced.
+  var FORCE_LIVE_LOAN_IDS = {};
+  // loan_status_id says "Current" (1) for these, but a loan-by-loan reconciliation
+  // against Loandisk's own current-loan report on 2026-08-07 found them absent —
+  // both are ₱5M, released 06/30/2026 and synced 07/01/2026, so this isn't sync lag
+  // on a fresh loan; they were most likely voided/deleted in Loandisk after the fact
+  // and the sync (insert/upsert-only, no deletion step) never removed them here.
+  // Excluded from live totals until confirmed otherwise.
+  var EXCLUDED_LOAN_IDS = {
+    11329911: true, // Synetcom, app 1000455 — not in Loandisk's current-loan report
+    11329952: true, // Synetcom, app 1000457 — not in Loandisk's current-loan report
   };
   function economicGroupFor(businessName, borrowerId) {
     if (BORROWER_ID_GROUP_OVERRIDE[borrowerId]) return BORROWER_ID_GROUP_OVERRIDE[borrowerId];
     var key = (businessName || "").trim().toLowerCase();
     return ECONOMIC_GROUP_ALIASES[key] || businessName || ("Borrower " + borrowerId);
+  }
+
+  // Shared by buildPortfolio (current book) and buildHistory (monthly snapshots) —
+  // see FORCE_LIVE_LOAN_IDS/loan_status_id comment above for why 3/4 are excluded.
+  function isLiveLoan(l) {
+    if (EXCLUDED_LOAN_IDS[l.loan_id]) return false;
+    return !!FORCE_LIVE_LOAN_IDS[l.loan_id] || (l.loan_status_id !== 4 && l.loan_status_id !== 3);
+  }
+
+  /* ---- history (Test - Historical DB) ----
+     Loan-level monthly snapshots (same shape as the live loan table, plus
+     synced_at/last_snapshot_date). Recent months carry more than one intraday
+     snapshot, so this collapses each calendar month down to its latest snapshot
+     date before aggregating — otherwise the trend charts would show several
+     points a day apart clustered at the end next to points a month apart
+     everywhere else, which is misleading on an evenly-spaced line/bar axis. */
+  var MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function parseSnapshotDate(s) {
+    var m = String(s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    return new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+  }
+  function monthKey(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+  function monthLabel(d) { return MONTH_ABBR[d.getMonth()] + " '" + String(d.getFullYear()).slice(2); }
+
+  function buildHistory(historyRows) {
+    // Latest snapshot date seen per calendar month.
+    var lastDateForMonth = {};
+    historyRows.forEach(function (r) {
+      var d = parseSnapshotDate(r.last_snapshot_date);
+      if (!d) return;
+      var mk = monthKey(d);
+      if (!lastDateForMonth[mk] || d > lastDateForMonth[mk]) lastDateForMonth[mk] = d;
+    });
+    var keepTimes = {};
+    Object.keys(lastDateForMonth).forEach(function (mk) { keepTimes[lastDateForMonth[mk].getTime()] = true; });
+
+    var byMonth = {};
+    historyRows.forEach(function (r) {
+      var d = parseSnapshotDate(r.last_snapshot_date);
+      if (!d || !keepTimes[d.getTime()]) return;
+      var mk = monthKey(d);
+      (byMonth[mk] = byMonth[mk] || []).push(r);
+    });
+
+    // A snapshot pull that returns far fewer loan rows than the last accepted
+    // month is a broken/partial sync, not a real drop — write-offs, restructures
+    // and repayments change fields on a loan's row, they don't remove the row
+    // from a full-book export. Skip any month that craters below half the last
+    // good count so a bad pull doesn't render as a fake cliff in the trend charts;
+    // keep comparing later months against that same last-good baseline until a
+    // real full snapshot resumes.
+    var acceptedMonthKeys = [];
+    var lastGoodCount = null;
+    Object.keys(byMonth).sort().forEach(function (mk) {
+      var count = byMonth[mk].length;
+      if (lastGoodCount != null && count < lastGoodCount * 0.5) return;
+      acceptedMonthKeys.push(mk);
+      lastGoodCount = count;
+    });
+
+    var totalSeries = [];
+    var byGroup = {};
+    acceptedMonthKeys.forEach(function (mk) {
+      var date = lastDateForMonth[mk];
+      var label = monthLabel(date);
+
+      var byGroupThisMonth = {};
+      byMonth[mk].forEach(function (l) {
+        var key = economicGroupFor(l.borrower_business_name, l.borrower_id);
+        (byGroupThisMonth[key] = byGroupThisMonth[key] || []).push(l);
+      });
+
+      var monthPrincipal = 0, monthOverdue = 0;
+      Object.keys(byGroupThisMonth).forEach(function (key) {
+        var live = byGroupThisMonth[key].filter(isLiveLoan);
+        var principalBalance = live.reduce(function (s, l) { return s + parseNum(l.principal_balance_amount); }, 0);
+        var overduePrincipal = live.reduce(function (s, l) { return s + parseNum(l.pending_due_principal); }, 0);
+        var dpd = live.reduce(function (m, l) {
+          if (parseNum(l.principal_balance_amount) <= 0) return m; // zero-balance loans carry no exposure
+          return Math.max(m, Math.max(0, Math.round(parseNum(l.days_past_due))));
+        }, 0);
+        monthPrincipal += principalBalance;
+        monthOverdue += overduePrincipal;
+        (byGroup[key] = byGroup[key] || []).push({
+          key: mk, label: label, date: date,
+          principalBalance: principalBalance, overduePrincipal: overduePrincipal, dpd: dpd,
+        });
+      });
+
+      totalSeries.push({ key: mk, label: label, date: date, principalBalance: monthPrincipal, overduePrincipal: monthOverdue });
+    });
+
+    return { totalSeries: totalSeries, byGroup: byGroup };
   }
 
   /* ---- fetch helpers ---- */
@@ -181,7 +282,7 @@
       // already collected against them is still real cash. FORCE_LIVE_LOAN_IDS adds back the
       // handful of 3/4 loans that are actually live exposure (e.g. credit-counseling loans
       // mis-bucketed under status 3).
-      var liveLoans = loans.filter(function (l) { return FORCE_LIVE_LOAN_IDS[l.loan_id] || (l.loan_status_id !== 4 && l.loan_status_id !== 3); });
+      var liveLoans = loans.filter(isLiveLoan);
 
       // "Primary" loan drives display-only attributes only (industry/tier/bracket/name) —
       // falls back to the full loan list so a group with no live loans still has something
@@ -289,7 +390,7 @@
 
     var totalInterest = rows.reduce(function (s, r) { return s + r._interest; }, 0);
     var totalGrossDisb = rows.reduce(function (s, r) { return s + r._grossDisb; }, 0);
-    var activeLoans = loanRows.filter(function (l) { return (FORCE_LIVE_LOAN_IDS[l.loan_id] || (l.loan_status_id !== 4 && l.loan_status_id !== 3)) && parseNum(l.principal_balance_amount) > 0; }).length;
+    var activeLoans = loanRows.filter(function (l) { return isLiveLoan(l) && parseNum(l.principal_balance_amount) > 0; }).length;
 
     return {
       rows: rows,
@@ -320,6 +421,9 @@
       fetchAll(LOAN_TABLE, "*"),
       fetchAll(REPAYMENT_TABLE, "*"),
       fetchAll(CLASSIFICATION_TABLE, "*"),
+      // Trend charts are a bonus on top of the live book — a hiccup fetching
+      // history shouldn't take down the whole dashboard, so degrade to "no history".
+      fetchAll(HISTORY_TABLE, "*").catch(function () { return []; }),
     ]).then(function (results) {
       var classOverrides = {};
       results[2].forEach(function (r) {
@@ -328,6 +432,7 @@
       var portfolio = buildPortfolio(results[0], results[1], classOverrides);
       portfolio.rawLoans = results[0]; // unedited rows straight from "ProCredit Loan Database", every status/column
       portfolio.rawRepayments = results[1]; // unedited rows straight from "ProCredit Repayment Database"
+      portfolio.history = buildHistory(results[3]); // monthly snapshots from "Test - Historical DB"
       window.PORTFOLIO = portfolio;
       return portfolio;
     });
