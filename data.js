@@ -113,6 +113,7 @@
     "zenfro": "Waterside Holdings",
     "manila hemp": "Manila Hemp",
     "acc hypermart": "Manila Hemp",
+    "pig republic": "Nian's",
   };
   // Loans with no borrower_business_name (personal-name borrowers) that still
   // roll up into a named Economic Group, keyed by borrower_id.
