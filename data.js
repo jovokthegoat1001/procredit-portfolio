@@ -145,9 +145,13 @@
 
   // Shared by buildPortfolio (current book) and buildHistory (monthly snapshots) —
   // see FORCE_LIVE_LOAN_IDS/loan_status_id comment above for why 3/4 are excluded.
+  // loan_status_id is an integer in the live table but text in Test - Historical DB,
+  // so this must coerce before comparing or the !== check silently never matches
+  // on history rows (string "3"/"4" is never === number 3/4).
   function isLiveLoan(l) {
     if (EXCLUDED_LOAN_IDS[l.loan_id]) return false;
-    return !!FORCE_LIVE_LOAN_IDS[l.loan_id] || (l.loan_status_id !== 4 && l.loan_status_id !== 3);
+    var statusId = Number(l.loan_status_id);
+    return !!FORCE_LIVE_LOAN_IDS[l.loan_id] || (statusId !== 4 && statusId !== 3);
   }
 
   /* ---- history (Test - Historical DB) ----
