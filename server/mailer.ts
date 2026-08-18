@@ -1,7 +1,5 @@
 // Sends mail via Gmail SMTP using an app password on a single Workspace
-// account (SMTP_USER). Simpler than the Gmail API + domain-wide delegation
-// route: no service account, no Workspace admin approval — but mail can only
-// be sent "from" SMTP_USER itself, not an arbitrary impersonated mailbox.
+// account (SMTP_USER). Mail can only be sent "from" SMTP_USER itself.
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 export async function sendMail(to: string, subject: string, html: string): Promise<void> {

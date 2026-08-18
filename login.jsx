@@ -1,11 +1,8 @@
 const { useState, useEffect, useRef } = React;
 
-// TODO once the Edge Functions are deployed: replace these two with
-// `${SUPABASE_URL}/functions/v1/send-otp` and `.../verify-otp`. Kept as two
-// separate constants (rather than one base + path) because during local
-// testing each function runs on its own port.
-const SEND_OTP_URL = "http://localhost:8000";
-const VERIFY_OTP_URL = "http://localhost:8001";
+// TODO once deployed on Railway: replace with the assigned Railway domain,
+// e.g. "https://procredit-otp-production.up.railway.app".
+const OTP_SERVER_URL = "http://localhost:8000";
 
 const SESSION_KEY = "pc_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -57,7 +54,7 @@ function Login({ onSuccess }) {
     }
     setError(""); setLoading(true);
     try {
-      const res = await fetch(SEND_OTP_URL, {
+      const res = await fetch(`${OTP_SERVER_URL}/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmed }),
@@ -79,7 +76,7 @@ function Login({ onSuccess }) {
     if (code.trim().length !== 6) { setError("Enter the 6-digit code"); return; }
     setError(""); setLoading(true);
     try {
-      const res = await fetch(VERIFY_OTP_URL, {
+      const res = await fetch(`${OTP_SERVER_URL}/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code: code.trim() }),
