@@ -1,8 +1,6 @@
 const { useState, useEffect, useRef } = React;
 
-// TODO once deployed on Railway: replace with the assigned Railway domain,
-// e.g. "https://procredit-otp-production.up.railway.app".
-const OTP_SERVER_URL = "http://localhost:8000";
+const OTP_SERVER_URL = "https://procredit-portfolio-procredit-deploy.up.railway.app";
 
 const SESSION_KEY = "pc_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
