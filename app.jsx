@@ -851,7 +851,7 @@ const ICON = {
   menu: <svg viewBox="0 0 20 20" fill="none"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>,
 };
 
-function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, collapsed, onToggleCollapse, mobileOpen }) {
+function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, collapsed, onToggleCollapse, mobileOpen, onLogout }) {
   const exitCount = DATA.rows.filter((r) => r.action === "EXIT").length;
   const item = (key, label, icon, extra) => (
     <button className={"side-link" + (section === key ? " on" : "")} onClick={() => onNav(key)} title={label}>
@@ -894,11 +894,27 @@ function Sidebar({ section, onNav, dark, setDark, onLogo, onBack, canBack, colla
         <div className="side-card-row"><span className="side-card-dot"></span><span className="side-card-t">Live status</span></div>
         <div className="side-card-s"><b>{DATA.meta.updated.split(" ")[0]}</b><br/>Real-time portfolio data.</div>
       </div>
+      <button className="side-link" onClick={onLogout} title="Log out">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M8 3H5a2 2 0 00-2 2v10a2 2 0 002 2h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M13 6l4 4-4 4M17 10H8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <span>Log out</span>
+      </button>
     </aside>
   );
 }
 
-function WsBar({ onSearch, onOpenTable, onOpenMobileNav }) {
+function displayNameFromEmail(email) {
+  const local = (email || "").split("@")[0];
+  const words = local.split(/[._-]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1));
+  return words.length ? words.join(" ") : (email || "");
+}
+
+function initialsFromEmail(email) {
+  const words = displayNameFromEmail(email).split(" ").filter(Boolean);
+  const initials = (words[0]?.[0] || "") + (words[1]?.[0] || "");
+  return initials.toUpperCase() || "?";
+}
+
+function WsBar({ onSearch, onOpenTable, onOpenMobileNav, userEmail }) {
   const [q, setQ] = useState("");
   return (
     <div className="wsbar">
@@ -911,6 +927,15 @@ function WsBar({ onSearch, onOpenTable, onOpenMobileNav }) {
           onKeyDown={(e) => { if (e.key === "Enter") { onSearch(q); } }} />
       </div>
       <div className="wsbar-right">
+        {userEmail && (
+          <div className="ws-avatar" title={userEmail}>
+            <div className="av">{initialsFromEmail(userEmail)}</div>
+            <div>
+              <div className="nm">{displayNameFromEmail(userEmail)}</div>
+              <div className="rl">{userEmail}</div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1082,6 +1107,8 @@ function DashHome({ onRowClick, onDrill }) {
 /*  ROOT                                                                 */
 /* ===================================================================== */
 function App() {
+  const [session, setSession] = useState(() => getSession());
+  const [pendingEntry, setPendingEntry] = useState(null);
   const [status, setStatus] = useState("loading");
   const [errMsg, setErrMsg] = useState("");
   const [view, setView] = useState("landing"); // landing | overview | table | analytics | loandb | repaymentdb | groupReport
@@ -1098,6 +1125,9 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [reportGroup, setReportGroup] = useState(null);
 
+  // The landing page shows real portfolio summary numbers, so it loads data
+  // regardless of auth — the login gate only blocks entering the dashboard
+  // proper, it isn't a data-access boundary (the anon key + RLS already are).
   useEffect(() => {
     window.loadPortfolio()
       .then((portfolio) => { DATA = portfolio; setStatus("ready"); })
@@ -1110,6 +1140,26 @@ function App() {
       .then((p) => { DATA = p; setStatus("ready"); })
       .catch((e) => { setErrMsg(e.message || "Unknown error"); setStatus("error"); });
   }
+
+  // Wrap a landing-page CTA so it requires login first: if already signed in,
+  // run it immediately; otherwise stash it and run it right after Login succeeds.
+  function requireAuth(action) {
+    if (session) action();
+    else setPendingEntry(() => action);
+  }
+
+  function logout() {
+    clearSession();
+    setSession(null);
+    setView("landing");
+  }
+
+  if (pendingEntry) return <Login onSuccess={() => {
+    setSession(getSession());
+    const run = pendingEntry;
+    setPendingEntry(null);
+    run();
+  }} />;
 
   if (status === "loading") return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 16, color: "var(--ink-500)" }}>
@@ -1187,17 +1237,17 @@ function App() {
     <div className={"app" + (view !== "landing" ? " appdark" : "")}>
       {view === "landing" && (
         <Landing
-          onEnter={() => { setSection("overview"); setView("overview"); }}
-          onTable={() => { setSection("portfolio"); goTable({}); }}
-          onExit={() => { setSection("exits"); goTable({ action: "EXIT" }); }}
+          onEnter={() => requireAuth(() => { setSection("overview"); setView("overview"); })}
+          onTable={() => requireAuth(() => { setSection("portfolio"); goTable({}); })}
+          onExit={() => requireAuth(() => { setSection("exits"); goTable({ action: "EXIT" }); })}
         />
       )}
       {view !== "landing" && (
         <div className={"shell" + (dark ? "" : " light") + (noAnim ? " no-anim" : "")}>
-          <Sidebar section={section} onNav={onNav} dark={dark} setDark={toggleDark} onLogo={() => { setNavHistory([]); setMobileNavOpen(false); setView("landing"); }} onBack={() => { setMobileNavOpen(false); goBack(); }} canBack={navHistory.length > 0} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} mobileOpen={mobileNavOpen} />
+          <Sidebar section={section} onNav={onNav} dark={dark} setDark={toggleDark} onLogo={() => { setNavHistory([]); setMobileNavOpen(false); setView("landing"); }} onBack={() => { setMobileNavOpen(false); goBack(); }} canBack={navHistory.length > 0} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} mobileOpen={mobileNavOpen} onLogout={logout} />
           {mobileNavOpen && <div className="mobile-nav-overlay" onClick={() => setMobileNavOpen(false)}></div>}
           <div className="ws">
-            <WsBar onSearch={enterSearch} onOpenTable={() => onNav("portfolio")} onOpenMobileNav={() => setMobileNavOpen(true)} />
+            <WsBar onSearch={enterSearch} onOpenTable={() => onNav("portfolio")} onOpenMobileNav={() => setMobileNavOpen(true)} userEmail={session.email} />
             <div className="ws-scroll">
               {view === "overview"   && <DashHome onRowClick={setDetail} onDrill={goTable} />}
               {view === "table"      && <Table onRowClick={setDetail} filters={filters} setFilters={setFilters} query={query} setQuery={setQuery} sort={sort} setSort={setSort} />}

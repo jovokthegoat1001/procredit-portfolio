@@ -474,7 +474,7 @@
   .ws-avatar { display: flex; align-items: center; gap: 10px; padding-left: 6px; }
   .ws-avatar .av { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--brand), var(--brand-green)); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
   .ws-avatar .nm { font-size: 13px; font-weight: 600; color: var(--ink-900); line-height: 1.2; }
-  .ws-avatar .rl { font-size: 11px; color: var(--ink-500); }
+  .ws-avatar .rl { font-size: 11px; color: var(--ink-500); max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ws-scroll { flex: 1; overflow-y: auto; padding: 26px; }
 
   /* greeting / period selector */
@@ -591,6 +591,9 @@
        padding, leaving so little room the placeholder text was cut off mid-word */
     .wsbar { padding: 14px 16px; gap: 10px; }
     .wssearch { flex: 1; width: auto; max-width: none; }
+
+    /* name/email text crowds the search bar on narrow screens — keep just the avatar circle */
+    .ws-avatar .nm, .ws-avatar .rl { display: none; }
   }
 </style>
 </head>
@@ -607,6 +610,7 @@
   <script type="text/babel" src="charts.jsx"></script>
   <script type="text/babel" src="analytics.jsx"></script>
   <script type="text/babel" src="groupreport.jsx"></script>
+  <script type="text/babel" src="login.jsx"></script>
   <script type="text/babel" src="app.jsx"></script>
 </body>
 </html>
