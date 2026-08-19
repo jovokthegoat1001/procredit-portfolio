@@ -374,6 +374,7 @@
     rows.forEach(function (r) { clsSet[r.classification] = true; });
     var classifications = CLASS_ORDER.filter(function (c) { return clsSet[c]; });
     if (clsSet["null"]) classifications.push("null");
+    if (clsSet["No Class."]) classifications.push("No Class.");
 
     function tierSortKey(t) {
       var m = String(t).match(/(\d+)/);

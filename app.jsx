@@ -1047,7 +1047,22 @@ function DashHome({ onRowClick, onDrill }) {
   if (annualSeries.length) annualSeries.push({ x: "Now", y: metricVal });
 
   const series = period === "Annually" ? annualSeries : monthlySeries;
-  const chg = series.length > 1 && series[0].y ? (series[series.length - 1].y - series[0].y) / series[0].y : 0;
+  // Trailing change = "Now" vs. the last FULLY-ELAPSED month/year — not vs. the oldest
+  // point the chart happens to render (that produced absurd 2000%+ figures), and not
+  // vs. the current month/year's own bucket either: nightly snapshots mean this
+  // month's/year's point is really just "yesterday", not a real period-over-period
+  // comparison, so it's skipped in favor of the last full prior period.
+  function trailingChange(isSamePeriodAsNow) {
+    var i = fullSeries.length - 1;
+    while (i >= 0 && isSamePeriodAsNow(fullSeries[i].date)) i--;
+    if (i < 0) return 0;
+    var prevVal = metricOf(fullSeries[i]);
+    return prevVal ? (metricVal - prevVal) / prevVal : 0;
+  }
+  var _now = new Date();
+  const chg = period === "Annually"
+    ? trailingChange(function (d) { return d.getFullYear() === _now.getFullYear(); })
+    : trailingChange(function (d) { return d.getFullYear() === _now.getFullYear() && d.getMonth() === _now.getMonth(); });
   const sparkColor = tab === "principal" ? "var(--brand)" : "var(--neg)";
 
   const grp = (cls) => rows.filter((r) => cls.includes(r.classification)).reduce((s, r) => s + r.principalBalance, 0);

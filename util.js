@@ -56,6 +56,7 @@
     "Loss":       { rank: 6, fg: "#5c1010",        label: "Loss" },
     "Fully Paid": { rank: 7, fg: "#7d8a99",        label: "Fully Paid" },
     "null":       { rank: 8, fg: "var(--ink-300)", label: "Unclassified" },
+    "No Class.":  { rank: 8, fg: "var(--ink-300)", label: "No Class." },
   };
 
   const DPD_STYLE = {
