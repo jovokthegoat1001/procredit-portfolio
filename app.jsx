@@ -1110,7 +1110,7 @@ function DashHome({ onRowClick, onDrill }) {
             {period !== "Current" && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
                 <div className={"bal-chg " + (chg >= 0 ? "up" : "down")}>{chg >= 0 ? up : down}{U.pct(Math.abs(chg), 1)}</div>
-                <span style={{ fontSize: 12.5, color: "var(--ink-500)" }}>{period === "Annually" ? "trailing annual" : "trailing monthly"}</span>
+                <span style={{ fontSize: 12.5, color: "var(--ink-500)" }}>{period === "Annually" ? "growth over year" : "growth over monthly period"}</span>
               </div>
             )}
             <div className="bal-sub">{U.fullPHP(metricVal)} across {totals.borrowers} economic groups</div>
