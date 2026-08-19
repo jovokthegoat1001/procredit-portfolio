@@ -137,6 +137,13 @@
     11329911: true, // Synetcom, app 1000455 — not in Loandisk's current-loan report
     11329952: true, // Synetcom, app 1000457 — not in Loandisk's current-loan report
   };
+  // Economic groups hidden from the portfolio table entirely, by name (lowercased).
+  // Both of MOBER's loans are write-offs (loan_status_id 3) with zero live exposure,
+  // so the group carries no current risk — kept out of the table at the user's request
+  // rather than generalizing to every zero-live-loan group (several others still show).
+  var HIDDEN_GROUPS = {
+    "mober": true,
+  };
   function economicGroupFor(businessName, borrowerId) {
     if (BORROWER_ID_GROUP_OVERRIDE[borrowerId]) return BORROWER_ID_GROUP_OVERRIDE[borrowerId];
     var key = (businessName || "").trim().toLowerCase();
@@ -276,6 +283,7 @@
     var rows = [];
     var id = 0;
     Object.keys(byGroup).forEach(function (key) {
+      if (HIDDEN_GROUPS[key.trim().toLowerCase()]) return;
       var loans = byGroup[key];
       id++;
 

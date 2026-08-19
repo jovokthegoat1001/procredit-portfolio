@@ -4,6 +4,86 @@ const { useState, useMemo, useEffect, useRef } = React;
 let DATA = null; // populated after Supabase async load
 
 /* ---------- small UI atoms ---------- */
+/* Loader from Uiverse.io by Praashoo7 — the pasted CSS only had the animation
+   rules, not the container positioning Uiverse's demo page supplies for free,
+   so .main/.loaders/.loadersB/centering below is filled in to make the fan-of-
+   tubes layout actually center instead of collapsing (abs-positioned children
+   don't size their parent). Also completes the rotation sequence to 10 steps
+   (0–180deg) to match all 10 ball elements — the source snippet stopped at 9. */
+function PortfolioLoader() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 20, color: "var(--ink-500)" }}>
+      <style>{`
+        .main { position: relative; width: 13em; height: 13em; font-size: 8px; }
+        .loaders, .loadersB { position: absolute; top: 0; left: 0; width: 13em; height: 13em; }
+        .loader, .loaderA {
+          position: absolute; left: 50%; top: 50%;
+          margin-left: -0.575em; margin-top: -6.5em;
+          transform-origin: center;
+        }
+        .loader { width: 1.15em; height: 13em; border-radius: 50px; background: color-mix(in srgb, var(--brand) 22%, white); }
+        .loader:after {
+          content: ""; position: absolute; left: 0; top: 0;
+          width: 1.15em; height: 5em; border-radius: 50px;
+          background: color-mix(in srgb, var(--brand) 22%, white);
+          border: 1px solid color-mix(in srgb, var(--brand) 32%, white);
+          box-shadow: inset 5px 5px 15px rgba(0,0,0,.08), inset -5px -5px 15px rgba(255,255,255,.65);
+          mask-image: linear-gradient(to bottom, black calc(100% - 48px), transparent 100%);
+        }
+        .loader::before {
+          content: ""; position: absolute; bottom: 0; right: 0;
+          width: 1.15em; height: 4.5em; border-radius: 50px;
+          background: color-mix(in srgb, var(--brand) 22%, white);
+          border: 1px solid color-mix(in srgb, var(--brand) 32%, white);
+          box-shadow: inset 5px 5px 15px rgba(0,0,0,.08), inset -5px -5px 15px rgba(255,255,255,.65);
+          mask-image: linear-gradient(to top, black calc(100% - 48px), transparent 100%);
+        }
+        .loaderA { width: 1.15em; height: 13em; border-radius: 50px; background: transparent; }
+        .ball0, .ball1, .ball2, .ball3, .ball4, .ball5, .ball6, .ball7, .ball8, .ball9 {
+          width: 1.15em; height: 1.15em; border-radius: 50%;
+          box-shadow:
+            rgba(0, 0, 0, 0.17) 0px -10px 10px 0px inset,
+            rgba(0, 0, 0, 0.15) 0px -15px 15px 0px inset,
+            rgba(0, 0, 0, 0.1) 0px -40px 20px 0px inset,
+            rgba(0, 0, 0, 0.06) 0px 2px 1px,
+            rgba(0, 0, 0, 0.09) 0px 4px 2px,
+            rgba(0, 0, 0, 0.09) 0px 8px 4px,
+            rgba(0, 0, 0, 0.09) 0px 16px 8px,
+            rgba(0, 0, 0, 0.09) 0px 32px 16px,
+            0px -1px 15px -8px rgba(0, 0, 0, 0.09);
+          transition: transform 800ms cubic-bezier(1, -0.4, 0, 1.4);
+          background-color: var(--brand);
+          animation: 3.63s move ease-in-out infinite;
+        }
+        .loader:nth-child(2), .loaderA:nth-child(2) { transform: rotate(20deg); }
+        .loader:nth-child(3), .loaderA:nth-child(3) { transform: rotate(40deg); }
+        .loader:nth-child(4), .loaderA:nth-child(4) { transform: rotate(60deg); }
+        .loader:nth-child(5), .loaderA:nth-child(5) { transform: rotate(80deg); }
+        .loader:nth-child(6), .loaderA:nth-child(6) { transform: rotate(100deg); }
+        .loader:nth-child(7), .loaderA:nth-child(7) { transform: rotate(120deg); }
+        .loader:nth-child(8), .loaderA:nth-child(8) { transform: rotate(140deg); }
+        .loader:nth-child(9), .loaderA:nth-child(9) { transform: rotate(160deg); }
+        .loader:nth-child(10), .loaderA:nth-child(10) { transform: rotate(180deg); }
+        .ball1 { animation-delay: 0.2s; } .ball2 { animation-delay: 0.4s; } .ball3 { animation-delay: 0.6s; }
+        .ball4 { animation-delay: 0.8s; } .ball5 { animation-delay: 1s; }   .ball6 { animation-delay: 1.2s; }
+        .ball7 { animation-delay: 1.4s; } .ball8 { animation-delay: 1.6s; } .ball9 { animation-delay: 1.8s; }
+        @keyframes move { 0% { transform: translateY(0em); } 50% { transform: translateY(12em); } 100% { transform: translateY(0em); } }
+      `}</style>
+      <div className="main">
+        <div className="loaders">
+          {Array.from({ length: 10 }).map((_, i) => <div key={i} className="loader"></div>)}
+        </div>
+        <div className="loadersB">
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+            <div key={n} className="loaderA"><div className={"ball" + n}></div></div>
+          ))}
+        </div>
+      </div>
+      <div style={{ fontSize: 13, fontFamily: "var(--mono)" }}>Loading portfolio data…</div>
+    </div>
+  );
+}
+
 function ActionBadge({ action, classification, size = "sm" }) {
   const s = U.ACTION_STYLE[action];
   // Loss carries the same EXIT semantics (counted/filtered/highlighted identically)
@@ -1164,13 +1244,7 @@ function App() {
     run();
   }} />;
 
-  if (status === "loading") return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 16, color: "var(--ink-500)" }}>
-      <style>{`@keyframes _spin { to { transform: rotate(360deg); } }`}</style>
-      <div style={{ width: 36, height: 36, borderRadius: "50%", border: "3px solid var(--line)", borderTopColor: "var(--brand)", animation: "_spin 0.8s linear infinite" }}></div>
-      <div style={{ fontSize: 13, fontFamily: "var(--mono)" }}>Loading portfolio data…</div>
-    </div>
-  );
+  if (status === "loading") return <PortfolioLoader />;
 
   if (status === "error") return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 12, padding: 40, textAlign: "center" }}>
