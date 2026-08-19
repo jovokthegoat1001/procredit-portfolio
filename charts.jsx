@@ -429,6 +429,28 @@ function MultiLineChart({ series, height = 220, fmt, empty = "Not enough histori
     setHoverI(n === 1 ? 0 : Math.round(frac * (n - 1)));
   };
 
+  // At each x-index, series whose pixel y lands within a hair of each other (near-
+  // identical values, e.g. Manila Hemp/ACC Hypermart) get merged into one pie-sliced
+  // dot instead of drawing separate overlapping circles that hide one another.
+  function pieSlicePath(cx, cy, r, i, count) {
+    const a0 = (i / count) * 2 * Math.PI - Math.PI / 2;
+    const a1 = ((i + 1) / count) * 2 * Math.PI - Math.PI / 2;
+    const x1 = cx + r * Math.cos(a0), y1 = cy + r * Math.sin(a0);
+    const x2 = cx + r * Math.cos(a1), y2 = cy + r * Math.sin(a1);
+    const largeArc = a1 - a0 > Math.PI ? 1 : 0;
+    return `M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${largeArc} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`;
+  }
+  function dotGroupsAt(i) {
+    const groups = [];
+    lines.forEach((s, si) => {
+      const py = s.pts[i][1];
+      const g = groups.find((grp) => Math.abs(grp.py - py) < 1.5);
+      if (g) g.items.push({ si, color: s.color });
+      else groups.push({ py, items: [{ si, color: s.color }] });
+    });
+    return groups;
+  }
+
   return (
     <div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 12 }}>
@@ -454,9 +476,22 @@ function MultiLineChart({ series, height = 220, fmt, empty = "Not enough histori
             <path key={si} d={s.d} fill="none" stroke={s.color} strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round"
               strokeDasharray={si % 2 === 1 ? "7 4" : undefined} vectorEffect="non-scaling-stroke" />
           ))}
-          {lines.map((s, si) => s.pts.map((p, i) => (
-            <circle key={si + "-" + i} cx={p[0] + (si % 2 === 1 ? 2.5 : -2.5)} cy={p[1]} r={hoverI === i ? 5 : 3} fill={s.color} stroke="var(--surface)" strokeWidth={hoverI === i ? 2 : 1.5} vectorEffect="non-scaling-stroke" style={{ transition: "r .1s" }} />
-          )))}
+          {Array.from({ length: n }).map((_, i) => {
+            const r = hoverI === i ? 5.5 : 3.5;
+            const cx = x(i);
+            return dotGroupsAt(i).map((g, gi) => {
+              if (g.items.length === 1) {
+                return <circle key={i + "-" + gi} cx={cx} cy={g.py} r={r} fill={g.items[0].color} stroke="var(--surface)" strokeWidth={hoverI === i ? 2 : 1.5} vectorEffect="non-scaling-stroke" style={{ transition: "r .1s" }} />;
+              }
+              return (
+                <g key={i + "-" + gi} stroke="var(--surface)" strokeWidth={hoverI === i ? 1.3 : 1} style={{ transition: "r .1s" }}>
+                  {g.items.map((item, wi) => (
+                    <path key={wi} d={pieSlicePath(cx, g.py, r, wi, g.items.length)} fill={item.color} vectorEffect="non-scaling-stroke" />
+                  ))}
+                </g>
+              );
+            });
+          })}
         </svg>
         {hoverI != null && (
           <div style={{
