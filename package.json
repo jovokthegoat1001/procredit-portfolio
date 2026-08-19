@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "data.js",
   "scripts": {
-    "dev": "serve -l 5500",
+    "build": "node build.js",
+    "dev": "npm run build && serve public -l 5500",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -11,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "serve": "^14.2.6",
     "supabase": "^2.114.0"
   }
