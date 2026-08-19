@@ -4,8 +4,11 @@ const { useState, useMemo, useEffect, useRef } = React;
 let DATA = null; // populated after Supabase async load
 
 /* ---------- small UI atoms ---------- */
-function ActionBadge({ action, size = "sm" }) {
+function ActionBadge({ action, classification, size = "sm" }) {
   const s = U.ACTION_STYLE[action];
+  // Loss carries the same EXIT semantics (counted/filtered/highlighted identically)
+  // but reads better to an analyst as "no further exposure" than a bare "EXIT".
+  const label = (action === "EXIT" && classification === "Loss") ? "No further Exp." : s.label;
   const pad = size === "lg" ? "5px 12px" : "3px 9px";
   const fs = size === "lg" ? 12.5 : 11;
   return (
@@ -15,7 +18,7 @@ function ActionBadge({ action, size = "sm" }) {
       color: s.fg, background: s.bg, border: `1px solid ${s.border}`, whiteSpace: "nowrap",
     }}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot }}></span>
-      {s.label}
+      {label}
     </span>
   );
 }
@@ -171,7 +174,7 @@ function Cell({ col, row }) {
     case "money": return <Num value={v} kind="abbrev" neg={col.neg} muted={false} />;
     case "pct": return <span style={{ fontFamily: "var(--mono)", fontSize: 12.5, color: v >= 0.03 ? "var(--ink-900)" : "var(--ink-400)", fontWeight: v >= 0.03 ? 600 : 400 }}>{U.pct(v)}</span>;
     case "class": return <ClassDot cls={v} />;
-    case "action": return <ActionBadge action={v} />;
+    case "action": return <ActionBadge action={v} classification={row.classification} />;
     case "dpd": return <span className="dpd-pill" style={{ "--dpd": U.DPD_STYLE[v] }}>{v}</span>;
     default: return v;
   }
@@ -674,7 +677,7 @@ function Detail({ row, onClose, onOpenReport }) {
             )}
             <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center" }}>
               <ClassDot cls={row.classification} />
-              <ActionBadge action={row.action} size="lg" />
+              <ActionBadge action={row.action} classification={row.classification} size="lg" />
               {row.hasRestructured && (
                 <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--warn)", border: "1px solid var(--warn-bd)", background: "var(--warn-bg)", borderRadius: 5, padding: "3px 8px" }}>RESTRUCTURED</span>
               )}
@@ -976,7 +979,7 @@ function DashHome({ onRowClick, onDrill }) {
   ];
 
   const byClass = meta.classifications
-    .map((c) => ({ label: c, value: rows.filter((r) => r.classification === c).length, color: U.CLASS_STYLE[c] ? U.CLASS_STYLE[c].fg : "var(--ink-300)" }))
+    .map((c) => ({ label: c, value: rows.filter((r) => r.classification === c).reduce((s, r) => s + r.principalBalance, 0), color: U.CLASS_STYLE[c] ? U.CLASS_STYLE[c].fg : "var(--ink-300)" }))
     .filter((s) => s.value > 0);
   const totC = byClass.reduce((s, x) => s + x.value, 0);
   let acc = 0;
@@ -1070,7 +1073,7 @@ function DashHome({ onRowClick, onDrill }) {
                   onClick={() => onDrill({ classification: s.label }, { replace: true })}>
                   <span className="mix-leg-dot" style={{ background: s.color }}></span>
                   <span className="mix-leg-l">{s.label}</span>
-                  <span className="mix-leg-v">{s.value}</span>
+                  <span className="mix-leg-v">{U.abbrevPHP(s.value)} &middot; {U.pct(totC ? s.value / totC : 0, 1)}</span>
                 </div>
               ))}
             </div>
@@ -1092,7 +1095,7 @@ function DashHome({ onRowClick, onDrill }) {
                     <div className="recent-ind">{r.industry}</div>
                   </div>
                 </div>
-                <ActionBadge action={r.action} />
+                <ActionBadge action={r.action} classification={r.classification} />
                 <span className="recent-val">{U.abbrevPHP(r.principalBalance)}</span>
               </div>
             ))}

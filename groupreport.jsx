@@ -53,7 +53,7 @@ function GroupReport({ economicGroup }) {
           {row && (
             <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center" }}>
               <ClassDot cls={row.classification} />
-              <ActionBadge action={row.action} size="lg" />
+              <ActionBadge action={row.action} classification={row.classification} size="lg" />
             </div>
           )}
         </div>
