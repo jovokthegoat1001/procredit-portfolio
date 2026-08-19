@@ -386,6 +386,112 @@ function LineChart({ series, height = 220, color = "var(--brand)", fmt, empty = 
   );
 }
 
+/* Multi-series line chart — one colored line per entity sharing the same x-axis,
+   with a legend and a hover tooltip listing every series' value at that point.
+   series: [{ label, color, points: [{x, y}, ...] }, ...] — every series' points
+   array must be pre-aligned (same length/order/x-values) by the caller. */
+function MultiLineChart({ series, height = 220, fmt, empty = "Not enough historical data yet." }) {
+  const [hoverI, setHoverI] = useStateChart(null);
+  const wrapRef = useRefChart(null);
+
+  const hasData = series && series.length && series[0].points && series[0].points.length > 0;
+  if (!hasData) {
+    return <div style={{ padding: "40px 0", textAlign: "center", color: "var(--ink-400)", fontSize: 13 }}>{empty}</div>;
+  }
+
+  const f = fmt || ((v) => U.commas(v));
+  const w = 640, pad = 28, padB = 22, padL = 36, padR = 36;
+  const n = series[0].points.length;
+  // Zero floor (unlike the single-series LineChart) — comparing several absolute
+  // balances side by side needs a shared, honest baseline, not each line scaled
+  // to its own tight range.
+  const allVals = series.flatMap((s) => s.points.map((p) => p.y));
+  const max = Math.max(...allVals, 1);
+  const plotH = height - pad - padB;
+  const plotW = w - padL - padR;
+  const x = (i) => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const y = (v) => pad + (1 - v / max) * plotH;
+
+  const lines = series.map((s) => {
+    const pts = s.points.map((p, i) => [x(i), y(p.y)]);
+    const d = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+    return { ...s, pts, d };
+  });
+
+  const labels = series[0].points.map((p) => p.x);
+  const step = Math.max(1, Math.ceil(n / 7));
+
+  const handleMove = (e) => {
+    const rect = wrapRef.current.getBoundingClientRect();
+    const relX = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    const mouseX = relX * w;
+    const frac = Math.min(1, Math.max(0, (mouseX - padL) / plotW));
+    setHoverI(n === 1 ? 0 : Math.round(frac * (n - 1)));
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", marginBottom: 12 }}>
+        {series.map((s, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-600)" }}>
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: s.color, flexShrink: 0 }}></span>
+            {s.label}
+          </div>
+        ))}
+      </div>
+      <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={handleMove} onMouseLeave={() => setHoverI(null)}>
+        <svg viewBox={`0 0 ${w} ${height}`} width="100%" height={height} preserveAspectRatio="none" style={{ display: "block", overflow: "visible" }}>
+          {[0, 0.5, 1].map((t, i) => (
+            <line key={i} x1="0" x2={w} y1={pad + t * plotH} y2={pad + t * plotH} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          ))}
+          {hoverI != null && (
+            <line x1={x(hoverI)} x2={x(hoverI)} y1={pad} y2={pad + plotH} stroke="var(--ink-400)" strokeOpacity="0.4" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+          )}
+          {/* Alternating series get a dash pattern — two entities can carry near-identical
+              balances every month (seen with Manila Hemp/ACC Hypermart), which would
+              otherwise draw one line exactly on top of the other and hide it completely. */}
+          {lines.map((s, si) => (
+            <path key={si} d={s.d} fill="none" stroke={s.color} strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round"
+              strokeDasharray={si % 2 === 1 ? "7 4" : undefined} vectorEffect="non-scaling-stroke" />
+          ))}
+          {lines.map((s, si) => s.pts.map((p, i) => (
+            <circle key={si + "-" + i} cx={p[0] + (si % 2 === 1 ? 2.5 : -2.5)} cy={p[1]} r={hoverI === i ? 5 : 3} fill={s.color} stroke="var(--surface)" strokeWidth={hoverI === i ? 2 : 1.5} vectorEffect="non-scaling-stroke" style={{ transition: "r .1s" }} />
+          )))}
+        </svg>
+        {hoverI != null && (
+          <div style={{
+            position: "absolute", left: `${(x(hoverI) / w) * 100}%`, top: `${(pad / height) * 100}%`,
+            transform: "translate(-50%, calc(-100% - 8px))", background: "var(--ink-900)", color: "var(--surface)",
+            fontFamily: "var(--mono)", padding: "8px 12px", borderRadius: 8,
+            boxShadow: "var(--shadow-soft)", pointerEvents: "none", zIndex: 5, whiteSpace: "nowrap",
+          }}>
+            <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 4 }}>{labels[hoverI]}</div>
+            {series.map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600 }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.color, flexShrink: 0 }}></span>
+                {s.label}: {f(s.points[hoverI].y)}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ position: "relative", height: 14, marginTop: 6 }}>
+        {labels.map((lbl, i) => {
+          if (!(i % step === 0 || i === n - 1)) return null;
+          const isFirst = i === 0, isLast = i === n - 1;
+          return (
+            <span key={i} style={{
+              position: "absolute", left: `${(x(i) / w) * 100}%`,
+              transform: isFirst ? "translateX(0)" : isLast ? "translateX(-100%)" : "translateX(-50%)",
+              fontSize: 10.5, color: "var(--ink-400)", fontFamily: "var(--mono)", whiteSpace: "nowrap",
+            }}>{lbl}</span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* Simple (non-stacked) vertical bars, one per category — items: [{label, value, color}] */
 function Bars({ items, height = 200, fmt, onClick, empty = "No data yet." }) {
   const [hi, setHi] = useStateChart(null);
@@ -438,4 +544,4 @@ function Bars({ items, height = 200, fmt, onClick, empty = "No data yet." }) {
   );
 }
 
-Object.assign(window, { Donut, HBars, StackBar, GroupedStackBars, LineChart, Bars });
+Object.assign(window, { Donut, HBars, StackBar, GroupedStackBars, LineChart, MultiLineChart, Bars });

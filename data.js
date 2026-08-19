@@ -114,6 +114,10 @@
     "manila hemp": "Manila Hemp",
     "acc hypermart": "Manila Hemp",
     "pig republic": "Nian's",
+    "samuya": "Rodzon",
+    "rodzon": "Rodzon",
+    "subic sun": "Loyola Dell",
+    "loyola dell": "Loyola Dell",
   };
   // Loans with no borrower_business_name (personal-name borrowers) that still
   // roll up into a named Economic Group, keyed by borrower_id.
@@ -148,6 +152,16 @@
     if (BORROWER_ID_GROUP_OVERRIDE[borrowerId]) return BORROWER_ID_GROUP_OVERRIDE[borrowerId];
     var key = (businessName || "").trim().toLowerCase();
     return ECONOMIC_GROUP_ALIASES[key] || businessName || ("Borrower " + borrowerId);
+  }
+  // The individual business/borrower behind a combined economic group — i.e. what
+  // economicGroupFor's input looked like before aliasing/override collapsed it into
+  // one name. Used to break a combined group's history back out into one line per
+  // original entity (e.g. Synergy Sourcing -> Dexter Dy + Janice Dy).
+  function subEntityFor(businessName, borrowerId, legalName) {
+    var name = (businessName || "").trim();
+    if (name) return name;
+    var legal = (legalName || "").trim();
+    return legal || ("Borrower " + borrowerId);
   }
 
   // Shared by buildPortfolio (current book) and buildHistory (monthly snapshots) —
@@ -215,6 +229,7 @@
 
     var totalSeries = [];
     var byGroup = {};
+    var bySubEntity = {}; // { economicGroup: { subEntityLabel: [{key,label,date,principalBalance}, ...] } }
     acceptedMonthKeys.forEach(function (mk) {
       var date = lastDateForMonth[mk];
       var label = monthLabel(date);
@@ -240,12 +255,24 @@
           key: mk, label: label, date: date,
           principalBalance: principalBalance, overduePrincipal: overduePrincipal, dpd: dpd,
         });
+
+        var subMap = {};
+        live.forEach(function (l) {
+          var sub = subEntityFor(l.borrower_business_name, l.borrower_id, l.custom_field_19606);
+          subMap[sub] = (subMap[sub] || 0) + parseNum(l.principal_balance_amount);
+        });
+        Object.keys(subMap).forEach(function (sub) {
+          bySubEntity[key] = bySubEntity[key] || {};
+          (bySubEntity[key][sub] = bySubEntity[key][sub] || []).push({
+            key: mk, label: label, date: date, principalBalance: subMap[sub],
+          });
+        });
       });
 
       totalSeries.push({ key: mk, label: label, date: date, principalBalance: monthPrincipal, overduePrincipal: monthOverdue });
     });
 
-    return { totalSeries: totalSeries, byGroup: byGroup };
+    return { totalSeries: totalSeries, byGroup: byGroup, bySubEntity: bySubEntity };
   }
 
   /* ---- fetch helpers ---- */

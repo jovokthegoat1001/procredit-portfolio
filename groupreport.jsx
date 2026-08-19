@@ -18,6 +18,25 @@ function GroupReport({ economicGroup }) {
 
   const exposureSeries = useMemoGroupReport(() => points.map((p) => ({ x: p.label, y: p.principalBalance })), [points]);
 
+  // If this economic group is a roll-up of more than one original business/borrower
+  // (via ECONOMIC_GROUP_ALIASES or BORROWER_ID_GROUP_OVERRIDE), break the exposure
+  // history back out into one line per entity, aligned to the group's own month axis.
+  const subEntityPoints = (history && history.bySubEntity && history.bySubEntity[economicGroup]) || {};
+  const subEntityLabels = Object.keys(subEntityPoints);
+  const subEntitySeries = useMemoGroupReport(() => {
+    if (subEntityLabels.length < 2) return null;
+    const monthLabels = points.map((p) => p.label);
+    return subEntityLabels.map((label, i) => {
+      const byMonth = {};
+      subEntityPoints[label].forEach((p) => { byMonth[p.label] = p.principalBalance; });
+      return {
+        label: label,
+        color: U.INDUSTRY_PALETTE[i % U.INDUSTRY_PALETTE.length],
+        points: monthLabels.map((ml) => ({ x: ml, y: byMonth[ml] || 0 })),
+      };
+    });
+  }, [subEntityLabels.join("|"), points]);
+
   const monthlyDpdSeries = useMemoGroupReport(() => points.slice(-12).map((p) => ({ x: p.label, y: p.dpd })), [points]);
 
   const annualDpd = useMemoGroupReport(() => {
@@ -72,6 +91,16 @@ function GroupReport({ economicGroup }) {
           <div className="card-head"><h3>Exposure History</h3></div>
           <LineChart series={exposureSeries} color="var(--brand)" fmt={U.exactPHP} height={260} />
         </div>
+
+        {subEntitySeries && (
+          <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <div className="card-head">
+              <h3>Exposure History by Business</h3>
+              <span className="card-tag">{subEntityLabels.length} entities combined into this group</span>
+            </div>
+            <MultiLineChart series={subEntitySeries} fmt={U.exactPHP} height={260} />
+          </div>
+        )}
 
         <div className="card">
           <div className="card-head"><h3>Max Exposure vs Current Exposure</h3></div>
