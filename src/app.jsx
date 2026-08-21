@@ -816,7 +816,7 @@ function Landing({ onEnter, onTable, onExit }) {
     .reduce((s, r) => s + r.principalBalance, 0);
   const atRiskPct = totals.principalBalance ? atRiskPrincipal / totals.principalBalance : 0;
 
-  const byClass = meta.classifications.map((c) => ({
+  const byClass = meta.classifications.filter((c) => c !== "Fully Paid").map((c) => ({
     label: c, value: rows.filter((r) => r.classification === c).length, color: U.CLASS_STYLE[c].fg,
   })).filter((s) => s.value > 0);
   const totClass = byClass.reduce((s, x) => s + x.value, 0);
@@ -1074,6 +1074,7 @@ function DashHome({ onRowClick, onDrill }) {
   ];
 
   const byClass = meta.classifications
+    .filter((c) => c !== "Fully Paid")
     .map((c) => ({ label: c, value: rows.filter((r) => r.classification === c).reduce((s, r) => s + r.principalBalance, 0), color: U.CLASS_STYLE[c] ? U.CLASS_STYLE[c].fg : "var(--ink-300)" }))
     .filter((s) => s.value > 0);
   const totC = byClass.reduce((s, x) => s + x.value, 0);

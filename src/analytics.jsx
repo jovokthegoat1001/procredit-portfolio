@@ -34,6 +34,11 @@ function Analytics({ onDrillTo }) {
 
   const drill = (preset) => onDrillTo && onDrillTo(preset, { replace: true });
 
+  // Fully Paid loans carry no ongoing risk, so every classification breakdown
+  // chart on this page excludes it — it stays in meta.classifications itself
+  // (unchanged) so the Portfolio table's classification filter can still find them.
+  const breakdownClasses = useMemoAnalytics(() => meta.classifications.filter((c) => c !== "Fully Paid"), []);
+
   const classColors = useMemoAnalytics(() => {
     const m = {};
     meta.classifications.forEach((c) => { m[c] = (U.CLASS_STYLE[c] || {}).fg || "var(--ink-300)"; });
@@ -43,13 +48,13 @@ function Analytics({ onDrillTo }) {
   const pbByIndustry  = useMemoAnalytics(() => topNDonut(rows, "industryGroup", (r) => r.principalBalance, Infinity, U.abbrevPHP), []);
   const cntByIndustry = useMemoAnalytics(() => topNDonut(rows, "industryGroup", () => 1, Infinity), []);
 
-  const pbByTier  = useMemoAnalytics(() => buildGroups(rows, meta.riskTiers, "riskTier", meta.classifications, "classification", (r) => r.principalBalance, classColors), []);
-  const cntByTier = useMemoAnalytics(() => buildGroups(rows, meta.riskTiers, "riskTier", meta.classifications, "classification", () => 1, classColors), []);
+  const pbByTier  = useMemoAnalytics(() => buildGroups(rows, meta.riskTiers, "riskTier", breakdownClasses, "classification", (r) => r.principalBalance, classColors), []);
+  const cntByTier = useMemoAnalytics(() => buildGroups(rows, meta.riskTiers, "riskTier", breakdownClasses, "classification", () => 1, classColors), []);
 
-  const pbByBracket  = useMemoAnalytics(() => buildGroups(rows, meta.revenueBrackets, "revenueBracket", meta.classifications, "classification", (r) => r.principalBalance, classColors), []);
-  const cntByBracket = useMemoAnalytics(() => buildGroups(rows, meta.revenueBrackets, "revenueBracket", meta.classifications, "classification", () => 1, classColors), []);
+  const pbByBracket  = useMemoAnalytics(() => buildGroups(rows, meta.revenueBrackets, "revenueBracket", breakdownClasses, "classification", (r) => r.principalBalance, classColors), []);
+  const cntByBracket = useMemoAnalytics(() => buildGroups(rows, meta.revenueBrackets, "revenueBracket", breakdownClasses, "classification", () => 1, classColors), []);
 
-  const classBreakdown = useMemoAnalytics(() => meta.classifications.map((c) => ({
+  const classBreakdown = useMemoAnalytics(() => breakdownClasses.map((c) => ({
     label: c, value: rows.filter((r) => r.classification === c).length, color: classColors[c],
   })).filter((s) => s.value > 0), []);
 

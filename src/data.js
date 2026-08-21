@@ -47,8 +47,8 @@
      so this is a system-derived suggestion from classification + DPD, surfaced
      to the user as such rather than presented as expert judgment. */
   function deriveAction(classification, dpd) {
-    if (classification === "Doubtful" || classification === "Loss" || dpd >= 90) return "EXIT";
-    if (classification === "SM" || classification === "SS-P" || classification === "SS-NP" ||
+    if (classification === "Doubtful" || classification === "Loss" || classification === "SS-NP" || dpd >= 90) return "EXIT";
+    if (classification === "SM" || classification === "SS-P" ||
         classification === "Watchlist" || dpd >= 30) return "DECREASE";
     return "MAINTAIN";
   }
@@ -141,6 +141,20 @@
     11329911: true, // Synetcom, app 1000455 — not in Loandisk's current-loan report
     11329952: true, // Synetcom, app 1000457 — not in Loandisk's current-loan report
   };
+  // Loans whose live balance/overdue-principal is known to be stale/wrong and should
+  // read as fully settled instead — applied to the current live book only (buildPortfolio),
+  // not to historical snapshots, since this corrects today's reality, not the past.
+  var PRINCIPAL_OVERRIDE_LOAN_IDS = {
+    7870403: 0, // L&C — overridden to 0 outstanding principal
+  };
+  function effectivePrincipal(l) {
+    var id = l.loan_id;
+    return PRINCIPAL_OVERRIDE_LOAN_IDS[id] != null ? PRINCIPAL_OVERRIDE_LOAN_IDS[id] : parseNum(l.principal_balance_amount);
+  }
+  function effectiveOverdue(l) {
+    var id = l.loan_id;
+    return PRINCIPAL_OVERRIDE_LOAN_IDS[id] != null ? PRINCIPAL_OVERRIDE_LOAN_IDS[id] : parseNum(l.pending_due_principal);
+  }
   // Economic groups hidden from the portfolio table entirely, by name (lowercased).
   // Both of MOBER's loans are write-offs (loan_status_id 3) with zero live exposure,
   // so the group carries no current risk — kept out of the table at the user's request
@@ -329,7 +343,7 @@
       // to display, but this must never feed back into the financial sums below, or it
       // re-introduces the stale-balance double-count liveLoans exists to prevent.
       var primary = (liveLoans.length ? liveLoans : loans).slice().sort(function (a, b) {
-        var d = parseNum(b.principal_balance_amount) - parseNum(a.principal_balance_amount);
+        var d = effectivePrincipal(b) - effectivePrincipal(a);
         return d !== 0 ? d : parseNum(b.loan_principal_amount) - parseNum(a.loan_principal_amount);
       })[0];
 
@@ -349,11 +363,11 @@
       }
 
       var dpd = liveLoans.reduce(function (m, l) {
-        if (parseNum(l.principal_balance_amount) <= 0) return m; // zero-balance loans carry no exposure — don't let their DPD drive the action
+        if (effectivePrincipal(l) <= 0) return m; // zero-balance loans carry no exposure — don't let their DPD drive the action
         return Math.max(m, Math.max(0, Math.round(parseNum(l.days_past_due))));
       }, 0);
-      var principalBalance = liveLoans.reduce(function (s, l) { return s + parseNum(l.principal_balance_amount); }, 0);
-      var overduePrincipal = liveLoans.reduce(function (s, l) { return s + parseNum(l.pending_due_principal); }, 0);
+      var principalBalance = liveLoans.reduce(function (s, l) { return s + effectivePrincipal(l); }, 0);
+      var overduePrincipal = liveLoans.reduce(function (s, l) { return s + effectiveOverdue(l); }, 0);
       var grossDisb = liveLoans.reduce(function (s, l) { return s + parseNum(l.loan_principal_amount); }, 0);
       var interest = loans.reduce(function (s, l) { return s + (interestByLoan[l.loan_id] || 0); }, 0);
       var industry = (primary.custom_field_19601 || "").toString().trim();
@@ -381,7 +395,7 @@
           return {
             loanId: l.loan_id,
             statusId: l.loan_status_id,
-            principalBalance: parseNum(l.principal_balance_amount),
+            principalBalance: effectivePrincipal(l),
             originalPrincipal: parseNum(l.loan_principal_amount),
             dpd: Math.max(0, Math.round(parseNum(l.days_past_due))),
             dueDate: l.due_date,
@@ -431,7 +445,7 @@
 
     var totalInterest = rows.reduce(function (s, r) { return s + r._interest; }, 0);
     var totalGrossDisb = rows.reduce(function (s, r) { return s + r._grossDisb; }, 0);
-    var activeLoans = loanRows.filter(function (l) { return isLiveLoan(l) && parseNum(l.principal_balance_amount) > 0; }).length;
+    var activeLoans = loanRows.filter(function (l) { return isLiveLoan(l) && effectivePrincipal(l) > 0; }).length;
 
     return {
       rows: rows,
